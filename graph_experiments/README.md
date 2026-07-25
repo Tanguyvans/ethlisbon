@@ -14,8 +14,9 @@ Two parts:
   `Transfer.isMintOrBurn` so you can filter them out of things like "biggest transfer").
 - `mcp-server/` — an MCP server exposing tools that query the deployed subgraph's GraphQL
   endpoint (`get_token_info`, `get_biggest_transfer`, `get_top_holders`, `get_recent_transfers`,
-  `get_account_balance`), plus tools that mutate and redeploy the subgraph itself
-  (`get_tracked_tokens`, `add_token_source`, `set_token_sources`).
+  `get_account_balance`), tools that mutate and redeploy the subgraph itself (`get_tracked_tokens`,
+  `add_token_source`, `set_token_sources`), and `get_deployment_status` to confirm what's *actually*
+  live on Graph Studio versus what's just locally configured.
 
 ## 1. Deploy the subgraph
 
@@ -79,6 +80,18 @@ To wire it into Claude Code, add an entry to your MCP config pointing at this se
   imports codegen output from that fixed name, so it can't be renamed per-token.
 - Every deploy gets a fresh Graph Studio version label, but that's invisible to `SUBGRAPH_URL` as
   long as it's set to the `version/latest` form (see step 1 above) — no runtime bookkeeping needed.
+
+## Verifying what's actually live
+
+`get_tracked_tokens` only reads the local `subgraph.yaml` — if a deploy's `codegen`/`build` steps
+succeed but the final `deploy` step fails (bad key, network blip), the manifest is already rewritten
+even though Studio never got the new version, so it can lie. `get_deployment_status` closes that
+gap: it queries the subgraph's built-in `_meta { deployment }` field (every subgraph exposes this
+automatically), which returns the exact IPFS hash of the manifest Studio is currently serving --
+the same hash `graph deploy` prints as `Build completed: Qm...`. `add_token_source`/
+`set_token_sources` already do this comparison automatically after every deploy and report whether
+it's confirmed live; call `get_deployment_status` directly any time query results look stale, wrong,
+or empty.
 
 ## Notes
 

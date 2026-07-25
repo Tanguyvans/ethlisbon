@@ -15,7 +15,16 @@
 // "<id>/<name>/version/latest" form (see README) and never touched again.
 // So we now redact the pinned URL out of what the agent sees and replace it
 // with an explicit "nothing to do" statement instead of a URL to misread.
+//
+// We also strip ANSI/CSI escape codes (graph-cli colorizes its output even
+// when not attached to a TTY). Left in, they render fine in a real terminal
+// but corrupt anything that regex-parses this stdout downstream -- notably
+// the MCP server extracting the "Build completed: Qm<hash>" deployment hash
+// to verify a redeploy went live, which a raw `\x1b[34m` prefix glued onto
+// the hash silently broke (looked like a permanent mismatch, not a parsing bug).
 import { execFileSync } from "node:child_process";
+
+const stripAnsi = (s) => s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
 
 const deployKey = process.env.GRAPH_DEPLOY_KEY;
 const subgraphName = process.env.GRAPH_SUBGRAPH_NAME || "sepolia-test";
@@ -50,10 +59,12 @@ try {
 } catch (err) {
   // Surface whatever the CLI printed before failing, then re-throw so the
   // caller (npm, or the MCP server's execFile wrapper) sees a non-zero exit.
-  process.stdout.write(err.stdout ?? "");
-  process.stderr.write(err.stderr ?? "");
+  process.stdout.write(stripAnsi(err.stdout ?? ""));
+  process.stderr.write(stripAnsi(err.stderr ?? ""));
   process.exit(err.status ?? 1);
 }
+
+output = stripAnsi(output);
 
 // Redact the version-pinned "Queries (HTTP)" URL before echoing -- it's a
 // different URL on every deploy, and an agent reading raw tool output tends

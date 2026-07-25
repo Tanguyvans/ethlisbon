@@ -64,6 +64,23 @@ function readTrackedTokens(): DataSource[] {
   return manifest.dataSources;
 }
 
+interface DeploymentMeta {
+  deployment: string;
+  block: { number: string } | null;
+  hasIndexingErrors: boolean;
+}
+
+// Every subgraph exposes this field automatically (no schema changes needed).
+// `deployment` is the IPFS hash of the manifest currently being served --
+// the same hash `graph deploy` prints as "Build completed: Qm...". Comparing
+// the two is how we verify the locally-configured token set (subgraph.yaml)
+// actually matches what Graph Studio is live-serving at SUBGRAPH_URL, rather
+// than just assuming the last deploy step succeeded.
+async function queryDeploymentMeta(): Promise<DeploymentMeta> {
+  const data = await queryGraph(`{ _meta { deployment block { number } hasIndexingErrors } }`);
+  return data._meta as DeploymentMeta;
+}
+
 function textResult(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
 }
@@ -220,14 +237,44 @@ server.tool(
 
 const tokenAddressPattern = /^0x[0-9a-fA-F]{40}$/;
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// A successful `graph deploy` CLI exit means Studio accepted the deploy, not
+// that api.studio.thegraph.com is already serving it -- there's a brief
+// (empirically ~1-3s) propagation window right after. A single immediate
+// _meta check can catch that window and report a false "not live yet" for a
+// deploy that's actually fine, so retry with backoff instead of checking
+// once. Total worst-case wait if it never matches: ~10s.
+async function waitForLiveDeployment(
+  publishedHash: string,
+  { attempts = 5, delayMs = 2000 } = {}
+): Promise<{ matched: boolean; meta?: DeploymentMeta; lastError?: string }> {
+  let lastMeta: DeploymentMeta | undefined;
+  let lastError: string | undefined;
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await sleep(delayMs);
+    try {
+      lastMeta = await queryDeploymentMeta();
+      if (lastMeta.deployment === publishedHash) return { matched: true, meta: lastMeta };
+    } catch (err) {
+      // SUBGRAPH_URL can be transiently unreachable right after a deploy too -- keep retrying.
+      lastError = (err as Error).message;
+    }
+  }
+  return { matched: false, meta: lastMeta, lastError };
+}
+
 // Shared by every tool that mutates subgraph.yaml and redeploys: runs a list
 // of npm-script steps in the subgraph dir and collects their combined output
 // for the tool result (read by an LLM agent, not a human -- see deploy.mjs
-// for why we redact the version-pinned URL out of its stdout). We append an
-// explicit, unambiguous closing line rather than relying on the agent to
-// correctly infer "no config change needed" from the deploy log.
+// for why we redact the version-pinned URL out of its stdout). A successful
+// CLI exit only means the deploy *request* succeeded, not that Studio is
+// actually serving it yet -- so we follow up with a retried _meta check
+// against SUBGRAPH_URL and report whether the new deployment hash is
+// confirmed live, rather than just assuming it.
 async function runDeployPipeline(steps: Array<{ label: string; cmd: string; args: string[] }>) {
   const log: string[] = [];
+  let deployStdout = "";
   for (const { label, cmd, args } of steps) {
     log.push(`$ ${label}`);
     try {
@@ -236,6 +283,7 @@ async function runDeployPipeline(steps: Array<{ label: string; cmd: string; args
         maxBuffer: 1024 * 1024 * 20,
       });
       log.push(stdout.trim(), stderr.trim());
+      if (label === "npm run deploy") deployStdout = stdout;
     } catch (err) {
       const e = err as { stdout?: string; stderr?: string; message: string };
       log.push(e.stdout?.trim() ?? "", e.stderr?.trim() ?? "", `FAILED: ${e.message}`);
@@ -243,17 +291,40 @@ async function runDeployPipeline(steps: Array<{ label: string; cmd: string; args
     }
   }
   log.push(
-    "Deploy succeeded. No SUBGRAPH_URL / MCP config change is needed -- it should already point at " +
-      "the stable '.../version/latest' Studio URL, which now serves this deploy automatically. Do " +
-      "not tell the user to update SUBGRAPH_URL."
+    "Deploy request succeeded. No SUBGRAPH_URL / MCP config change is needed -- it should already " +
+      "point at the stable '.../version/latest' Studio URL. Do not tell the user to update SUBGRAPH_URL."
   );
+
+  const publishedHash = deployStdout.match(/Build completed:\s*(\S+)/)?.[1];
+  if (publishedHash) {
+    const { matched, meta, lastError } = await waitForLiveDeployment(publishedHash);
+    if (matched && meta) {
+      log.push(
+        `Confirmed live: Graph Studio is now serving this exact deploy (block ${meta.block?.number}, ` +
+          `hasIndexingErrors: ${meta.hasIndexingErrors}).`
+      );
+    } else if (meta) {
+      log.push(
+        `NOT YET LIVE after retrying: Studio is still serving a previous deployment (${meta.deployment}), ` +
+          `not this one (${publishedHash}). Propagation is usually done within a few seconds, so this is ` +
+          "unusual -- call get_deployment_status again in a bit to confirm before relying on query results."
+      );
+    } else {
+      log.push(
+        `Could not verify live status (${lastError}). Call get_deployment_status once SUBGRAPH_URL is ` +
+          "confirmed reachable."
+      );
+    }
+  }
+
   return log.filter(Boolean).join("\n");
 }
 
 server.tool(
   "get_tracked_tokens",
   "List the ERC20 tokens this subgraph is currently configured to index (from subgraph.yaml), " +
-    "before deciding what to pass to set_token_sources.",
+    "before deciding what to pass to set_token_sources. This is LOCAL config, not proof it's live " +
+    "-- use get_deployment_status to confirm Graph Studio is actually serving this exact set.",
   {},
   async () => {
     const tokens = readTrackedTokens().map((ds) => ({
@@ -262,6 +333,31 @@ server.tool(
       startBlock: ds.source.startBlock,
     }));
     return textResult(tokens);
+  }
+);
+
+server.tool(
+  "get_deployment_status",
+  "Check whether Graph Studio is actually live-serving the locally-configured token set (as opposed " +
+    "to just trusting that the last deploy succeeded). Reports the locally-configured tokens " +
+    "alongside the live deployment's indexing status (current block, any indexing errors). Useful " +
+    "after add_token_source/set_token_sources, or any time query results look wrong/stale/empty.",
+  {},
+  async () => {
+    const trackedTokens = readTrackedTokens().map((ds) => ({
+      name: ds.name,
+      address: ds.source.address,
+      startBlock: ds.source.startBlock,
+    }));
+    const meta = await queryDeploymentMeta();
+    return textResult({
+      trackedTokens,
+      live: meta,
+      note:
+        "'live.block.number' is how far indexing has progressed -- a token just added can take a " +
+        "while to catch up from its startBlock before query tools return its data. " +
+        "'live.hasIndexingErrors: true' means something is broken server-side and needs attention.",
+    });
   }
 );
 
