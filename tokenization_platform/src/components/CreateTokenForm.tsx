@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Checkbox, ErrorText, Field, Select, TextInput } from "@/components/ui";
+import { withTokenizationBasePath } from "@/lib/paths";
 import type { AssetCategory, CustomFeeType, SupplyType, TokenType } from "@/types";
 
 const ASSET_CATEGORIES: { value: AssetCategory; label: string }[] = [
@@ -103,7 +104,7 @@ export default function CreateTokenForm() {
           : undefined,
       };
 
-      const res = await fetch("/api/tokens", {
+      const res = await fetch(withTokenizationBasePath("/api/tokens"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

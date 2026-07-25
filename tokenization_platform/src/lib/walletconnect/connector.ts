@@ -2,6 +2,7 @@
 
 import { DAppConnector, HederaChainId, HederaJsonRpcMethod, HederaSessionEvent } from "@hashgraph/hedera-wallet-connect";
 import { LedgerId } from "@hiero-ledger/sdk";
+import { TOKENIZATION_BASE_PATH, withTokenizationBasePath } from "@/lib/paths";
 
 // Browser-only singleton. Uses the "legacy" (but still fully supported) DAppConnector API
 // rather than the full Reown AppKit stack — we only need "connect a Hedera wallet and sign
@@ -10,6 +11,22 @@ import { LedgerId } from "@hiero-ledger/sdk";
 // README ("Legacy: Using this library and underlying WalletConnect libraries directly").
 
 let connectorPromise: Promise<DAppConnector> | null = null;
+
+interface RuntimeConfig {
+  network: string;
+  walletConnectProjectId: string;
+  appUrl: string;
+}
+
+async function getRuntimeConfig(): Promise<RuntimeConfig> {
+  const response = await fetch(withTokenizationBasePath("/api/runtime-config"), {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`Could not load wallet configuration (${response.status})`);
+  }
+  return response.json() as Promise<RuntimeConfig>;
+}
 
 function ledgerIdFor(network: string): LedgerId {
   if (network === "mainnet") return LedgerId.MAINNET;
@@ -29,14 +46,17 @@ export function getDAppConnector(): Promise<DAppConnector> {
   }
   if (!connectorPromise) {
     connectorPromise = (async () => {
-      const network = process.env.NEXT_PUBLIC_HEDERA_NETWORK ?? "testnet";
-      const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
+      const config = await getRuntimeConfig();
+      const network = config.network;
+      const projectId = config.walletConnectProjectId;
       if (!projectId) {
         throw new Error(
-          "NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is not set. Get a free project id at https://cloud.reown.com and add it to .env"
+          "WALLETCONNECT_PROJECT_ID is not set. Get a free project id at https://cloud.reown.com and add it to the service environment."
         );
       }
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
+      const appUrl =
+        config.appUrl ||
+        `${window.location.origin}${TOKENIZATION_BASE_PATH}`;
 
       const connector = new DAppConnector(
         {

@@ -1,7 +1,9 @@
 "use client";
 
+import { withTokenizationBasePath } from "@/lib/paths";
+
 export async function postJson<T = unknown>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(withTokenizationBasePath(path), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: body !== undefined ? JSON.stringify(body) : undefined,

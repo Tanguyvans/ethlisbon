@@ -14,7 +14,9 @@ declare global {
 
 function openDb(): Database.Database {
   const dbPath = process.env.DATABASE_PATH ?? "./data/tokenization.db";
-  const resolved = path.resolve(process.cwd(), dbPath);
+  const resolved = path.isAbsolute(dbPath)
+    ? dbPath
+    : path.join(/* turbopackIgnore: true */ process.cwd(), dbPath);
   fs.mkdirSync(path.dirname(resolved), { recursive: true });
 
   const db = new Database(resolved);

@@ -21,6 +21,8 @@ means:
 ## Architecture
 
 Single Next.js 16 app (App Router, TypeScript, Tailwind). No separate backend process.
+In the integrated deployment it is built as a standalone Node server under the
+`/tokenization` base path and exposed through Hermes's authenticated reverse proxy.
 
 ```
 src/
@@ -105,7 +107,8 @@ endpoint on `worldIdVerifiedAt`, the UI badge, the event log entry) is fully wir
    [portal.hedera.com](https://portal.hedera.com) or hashscan.io → Connect Wallet → Create
    account. You need the Account ID (`0.0.x`) and its DER-encoded private key.
 2. **Get a free Reown/WalletConnect project ID** at [cloud.reown.com](https://cloud.reown.com) —
-   needed for the "Connect wallet" flow (HashPack, Kabila, etc.).
+   needed for the "Connect wallet" flow (HashPack, Kabila, etc.). Set it as
+   `WALLETCONNECT_PROJECT_ID`; the app exposes this public identifier to the browser at runtime.
 3. Copy the env file and fill it in:
    ```bash
    cp .env.example .env
@@ -115,7 +118,7 @@ endpoint on `worldIdVerifiedAt`, the UI badge, the event log entry) is fully wir
    npm install
    npm run dev
    ```
-5. Open http://localhost:3000, create a token, then open it in a second browser (or incognito
+5. Open http://localhost:3000/tokenization, create a token, then open it in a second browser (or incognito
    window) with a *different* funded testnet account connected to act as the holder.
 
 ## Known simplifications (hackathon scope)
@@ -123,9 +126,10 @@ endpoint on `worldIdVerifiedAt`, the UI badge, the event log entry) is fully wir
 - **Single operator key** backs every token's admin/kyc/freeze/wipe/pause/supply/fee-schedule
   key, and is also the treasury. A production version would generate per-token keys and move
   signing behind an HSM/KMS.
-- **No request authentication** on the admin/holder API routes — anyone who knows a token ID and
-  account ID can call these endpoints. Fine for a judged demo, not for production; add
-  session/signature-based auth before exposing this publicly.
+- **No native request authentication** on the admin/holder API routes. The integrated container
+  mitigates this by binding Next.js to loopback and protecting every `/tokenization/*` request
+  with the Hermes session. Direct standalone deployment still needs session/signature-based
+  authorization before it can be exposed publicly.
 - **NFT tokens** can be created (all the same compliance keys apply), but minting individual
   serials / per-serial transfer management isn't built — the workspace UI shows a placeholder
   for non-fungible tokens on the distribute/reclaim panels.
