@@ -98,6 +98,22 @@ RUN git clone --depth 1 --branch ${HERMES_REF} https://github.com/NousResearch/h
 # editable from /opt/hermes-agent.
 RUN printf 'docker\n' > /opt/hermes-agent/.install_method
 
+# graph_experiments — subgraph (indexes an agent-chosen set of ERC20 tokens)
+# and the MCP server the agent uses to (re)deploy it and query the results.
+# Pure JS/TS deps (graph-cli's AssemblyScript compiler included), no native
+# compilation needed, so this installs directly in the final stage. Baked
+# into /opt (image-owned, read-only in spirit); start.sh seeds a writable
+# copy of subgraph/ onto the /data volume at boot so the agent's token-set
+# edits (via the graph MCP's set_token_sources tool) survive redeploys
+# instead of resetting to this baked-in default every time.
+COPY graph_experiments/subgraph/package.json graph_experiments/subgraph/package-lock.json /opt/graph_experiments/subgraph/
+RUN cd /opt/graph_experiments/subgraph && npm ci
+COPY graph_experiments/subgraph/ /opt/graph_experiments/subgraph/
+
+COPY graph_experiments/mcp-server/package.json graph_experiments/mcp-server/package-lock.json /opt/graph_experiments/mcp-server/
+RUN cd /opt/graph_experiments/mcp-server && npm ci
+COPY graph_experiments/mcp-server/ /opt/graph_experiments/mcp-server/
+
 COPY hermes-agent-template/requirements.txt /app/requirements.txt
 RUN uv pip install --system --no-cache -r /app/requirements.txt
 
@@ -120,6 +136,8 @@ ENV HERMES_HOME=/data/.hermes
 ENV TOKENIZATION_APP_DIR=/app/tokenization
 ENV TOKENIZATION_PORT=3000
 ENV DATABASE_PATH=/data/tokenization/tokenization.db
+ENV GRAPH_MCP_DIR=/opt/graph_experiments/mcp-server
+ENV SUBGRAPH_DIR=/data/graph/subgraph
 
 # Points hermes at our pre-built TUI bundle. hermes's _make_tui_argv checks
 # HERMES_TUI_DIR first: if dist/entry.js exists there, it skips the npm

@@ -1,18 +1,21 @@
 # graph_experiments
 
-Experiment: use The Graph to answer data questions about an ERC20 token on Ethereum Sepolia.
-
-Target token: `0xf531b8f309be94191af87605cfbf600d71c2cfe0` (Sepolia, indexed from block `11350000`).
+Experiment: use The Graph to let an agent index and answer data questions about ERC20 tokens it
+deploys, on Ethereum Sepolia (The Graph doesn't index Hedera yet). Ships with one default token
+tracked: `0xf531b8f309be94191af87605cfbf600d71c2cfe0` (Sepolia, indexed from block `11350000`) —
+see "Adding/removing tracked tokens" below to change the set.
 
 Two parts:
 
-- `subgraph/` — indexes every `Transfer` event for that token into `Token`, `Account`, and
-  `Transfer` entities. `Account.balance` is derived from transfers (mints/burns to/from the zero
+- `subgraph/` — indexes every `Transfer` event for an agent-chosen set of ERC20 contracts into
+  `Token`, `Account`, and `Transfer` entities (one dataSource per tracked token, all sharing the
+  same handler). `Account.balance` is derived from transfers (mints/burns to/from the zero
   address are tracked but excluded from balance math for the non-zero side, and flagged via
   `Transfer.isMintOrBurn` so you can filter them out of things like "biggest transfer").
 - `mcp-server/` — an MCP server exposing tools that query the deployed subgraph's GraphQL
-  endpoint: `get_token_info`, `get_biggest_transfer`, `get_top_holders`, `get_recent_transfers`,
-  `get_account_balance`.
+  endpoint (`get_token_info`, `get_biggest_transfer`, `get_top_holders`, `get_recent_transfers`,
+  `get_account_balance`), plus tools that mutate and redeploy the subgraph itself
+  (`get_tracked_tokens`, `add_token_source`, `set_token_sources`).
 
 ## 1. Deploy the subgraph
 
@@ -55,9 +58,25 @@ To wire it into Claude Code, add an entry to your MCP config pointing at this se
 }
 ```
 
+## Adding/removing tracked tokens
+
+- **`set_token_sources`** (MCP tool) replaces the *entire* tracked set in one call — pass the full
+  list of `{address, startBlock, name?}` you want tracked; anything omitted is dropped. This is
+  the only way to remove a token. Equivalent CLI: `npm run set-sources -- --tokens '[...]'` in
+  `subgraph/`, then `npm run codegen && npm run build && npm run deploy`.
+- **`add_token_source`** (MCP tool) appends one token without disturbing the rest — convenience
+  wrapper, can't remove anything.
+- The first dataSource is always named `ERC20Token` regardless of what you pass — `src/mapping.ts`
+  imports codegen output from that fixed name, so it can't be renamed per-token.
+- Every deploy gets a fresh Graph Studio version label, which changes the query URL. Both deploy
+  tools parse the new URL out of `graph deploy`'s own output and update `SUBGRAPH_URL` in place
+  (persisted to `subgraph/.query-url`), so query tools keep working after a redeploy without any
+  manual step.
+
 ## Notes
 
-- If you point this at a different ERC20, update `source.address` and `source.startBlock` in
-  `subgraph/subgraph.yaml` (and the address in this README) and redeploy.
 - "Biggest transfer" defaults to excluding mints/burns (`excludeMintBurn: true`) since those are
   usually not representative of real holder-to-holder activity — pass `false` to include them.
+- This is wired into the Hermes Railway deployment (`hermes-agent-template/`) as the `graph` MCP
+  server — see that template's `.env.example` for the `GRAPH_DEPLOY_KEY` / `GRAPH_SUBGRAPH_NAME`
+  Railway variables it needs.

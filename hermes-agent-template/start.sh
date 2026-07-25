@@ -18,7 +18,18 @@ mkdir -p /data/.hermes/cron /data/.hermes/sessions /data/.hermes/logs \
          /data/.hermes/memories /data/.hermes/skills /data/.hermes/platforms/pairing \
          /data/.hermes/hooks /data/.hermes/cache/images /data/.hermes/cache/audio \
          /data/.hermes/workspace /data/.hermes/skins /data/.hermes/plans \
-         /data/.hermes/home /data/tokenization
+         /data/.hermes/home /data/tokenization /data/graph
+
+# Seed a writable copy of the subgraph (manifest + node_modules) onto the
+# volume so the graph MCP's set_token_sources/add_token_source tools can
+# rewrite subgraph.yaml and redeploy without touching the image, and so the
+# agent's tracked-token-set edits survive container redeploys. Only done once
+# per volume — never overwrite an already-seeded copy, same idiom as the
+# agent-identity seeding below. GRAPH_MCP_DIR's image copy is left untouched
+# as the source of truth for the MCP server's own code.
+if [ ! -d /data/graph/subgraph ] && [ -d /opt/graph_experiments/subgraph ]; then
+  cp -r /opt/graph_experiments/subgraph /data/graph/subgraph
+fi
 
 # Stamp the install method as "docker" so hermes treats this as an immutable
 # container image, not a pip checkout. hermes's detect_install_method() reads

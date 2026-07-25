@@ -151,6 +151,22 @@ TOKEN_REQUEST_WEBHOOK_SECRET = (
 )
 TOKEN_REQUEST_WEBHOOK_URL = "http://127.0.0.1:8644/webhooks/token-request"
 
+# graph_experiments MCP — lets the agent (re)deploy a subgraph indexing an
+# arbitrary set of ERC20 tokens and query the indexed data. Sepolia/EVM-only
+# today (The Graph doesn't index Hedera); wired in ahead of that support
+# landing so the agent already has the tools once it does. GRAPH_DEPLOY_KEY
+# is the target Graph Studio subgraph's own deploy key — set it in Railway.
+# The subgraph's working copy lives on the persistent volume (seeded by
+# start.sh from the image at /opt/graph_experiments/subgraph) so any token-set
+# edits the agent makes via the MCP survive redeploys; the MCP server code
+# itself stays in the image at GRAPH_MCP_DIR.
+GRAPH_MCP_DIR = os.environ.get("GRAPH_MCP_DIR", "/opt/graph_experiments/mcp-server")
+GRAPH_SUBGRAPH_DIR = os.environ.get("SUBGRAPH_DIR", "/data/graph/subgraph")
+GRAPH_DEPLOY_KEY = os.environ.get("GRAPH_DEPLOY_KEY", "")
+GRAPH_SUBGRAPH_NAME = os.environ.get("GRAPH_SUBGRAPH_NAME", "sepolia-test")
+GRAPH_SUBGRAPH_URL = os.environ.get("SUBGRAPH_URL", "")
+GRAPH_SEPOLIA_RPC_URL = os.environ.get("SEPOLIA_RPC_URL", "")
+
 # Header hermes' own SPA uses to present its per-process session token
 # (hermes_cli/web_server.py's _SESSION_HEADER_NAME) — see
 # set_active_model_via_hermes()/_get_hermes_session_token() for why our own
@@ -578,6 +594,30 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
     hedera_env["TOKENIZATION_AGENT_SECRET"] = TOKENIZATION_AGENT_SECRET
     hedera_mcp["env"] = hedera_env
     mcp_servers["hedera"] = hedera_mcp
+
+    # Seed/update only the deployment-managed parts of the graph_experiments
+    # MCP entry, same idiom as hedera above. We invoke the locally-installed
+    # tsx binary by absolute path rather than `npx tsx` so it resolves
+    # deterministically regardless of hermes' subprocess cwd (npx's local-bin
+    # lookup walks up from cwd, which isn't GRAPH_MCP_DIR here).
+    graph_mcp = mcp_servers.get("graph")
+    if not isinstance(graph_mcp, dict):
+        graph_mcp = {}
+    graph_mcp.setdefault("command", f"{GRAPH_MCP_DIR}/node_modules/.bin/tsx")
+    graph_mcp.setdefault("args", [f"{GRAPH_MCP_DIR}/src/index.ts"])
+    graph_env = graph_mcp.get("env")
+    if not isinstance(graph_env, dict):
+        graph_env = {}
+    graph_env["SUBGRAPH_DIR"] = GRAPH_SUBGRAPH_DIR
+    graph_env["GRAPH_DEPLOY_KEY"] = GRAPH_DEPLOY_KEY
+    graph_env["GRAPH_SUBGRAPH_NAME"] = GRAPH_SUBGRAPH_NAME
+    if GRAPH_SUBGRAPH_URL:
+        graph_env["SUBGRAPH_URL"] = GRAPH_SUBGRAPH_URL
+    if GRAPH_SEPOLIA_RPC_URL:
+        graph_env["SEPOLIA_RPC_URL"] = GRAPH_SEPOLIA_RPC_URL
+    graph_mcp["env"] = graph_env
+    mcp_servers["graph"] = graph_mcp
+
     merged["mcp_servers"] = mcp_servers
 
     # The storefront POSTs a signed event here after committing a request to

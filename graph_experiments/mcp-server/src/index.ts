@@ -2,25 +2,50 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import yaml from "js-yaml";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
 const execFileAsync = promisify(execFile);
 
-const SUBGRAPH_URL = process.env.SUBGRAPH_URL;
 const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
-const SUBGRAPH_DIR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../subgraph"
-);
+// Overridable so a deployment can point this at a writable, volume-backed
+// copy of the subgraph (code ships in the image; the manifest + deploy-key
+// side effects need to persist across redeploys). Defaults to the sibling
+// checkout for local/dev use.
+const SUBGRAPH_DIR = process.env.SUBGRAPH_DIR
+  ? path.resolve(process.env.SUBGRAPH_DIR)
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../subgraph");
+const MANIFEST_PATH = path.join(SUBGRAPH_DIR, "subgraph.yaml");
+
+// Every subgraph deploy gets a fresh version label, and Graph Studio's query
+// URL embeds that label -- so the URL we started with goes stale the moment
+// anyone (re)deploys. We persist the latest known-good URL next to the
+// manifest so it survives process restarts, and update it in place whenever
+// a deploy tool successfully parses a new one out of `graph deploy` output.
+const QUERY_URL_FILE = path.join(SUBGRAPH_DIR, ".query-url");
+
+let SUBGRAPH_URL: string | undefined = existsSync(QUERY_URL_FILE)
+  ? readFileSync(QUERY_URL_FILE, "utf8").trim() || undefined
+  : process.env.SUBGRAPH_URL;
+
+function updateSubgraphUrlFromDeployOutput(output: string): string | undefined {
+  const match = output.match(/^QUERY_URL=(\S+)$/m);
+  if (!match) return undefined;
+  SUBGRAPH_URL = match[1];
+  writeFileSync(QUERY_URL_FILE, `${SUBGRAPH_URL}\n`);
+  return SUBGRAPH_URL;
+}
 
 async function queryGraph(query: string, variables?: Record<string, unknown>) {
   if (!SUBGRAPH_URL) {
     throw new Error(
-      "SUBGRAPH_URL is not set. Deploy the subgraph in ../subgraph to Graph Studio, then set " +
-        "SUBGRAPH_URL to its query endpoint (Studio 'Details' tab -> Query URL)."
+      "SUBGRAPH_URL is not set. Deploy the subgraph in ../subgraph to Graph Studio (e.g. via the " +
+        "set_token_sources tool), or set SUBGRAPH_URL to its query endpoint (Studio 'Details' tab " +
+        "-> Query URL)."
     );
   }
   const res = await fetch(SUBGRAPH_URL, {
@@ -36,6 +61,16 @@ async function queryGraph(query: string, variables?: Record<string, unknown>) {
     throw new Error(`Subgraph query error: ${JSON.stringify(json.errors)}`);
   }
   return json.data as Record<string, unknown>;
+}
+
+interface DataSource {
+  name: string;
+  source: { address: string; startBlock: number };
+}
+
+function readTrackedTokens(): DataSource[] {
+  const manifest = yaml.load(readFileSync(MANIFEST_PATH, "utf8")) as { dataSources: DataSource[] };
+  return manifest.dataSources;
 }
 
 function textResult(value: unknown) {
@@ -192,13 +227,68 @@ server.tool(
   }
 );
 
+const tokenAddressPattern = /^0x[0-9a-fA-F]{40}$/;
+
+// Shared by every tool that mutates subgraph.yaml and redeploys: runs a list
+// of npm-script steps in the subgraph dir, collects their combined output for
+// the tool result, and -- since the final step is always `npm run deploy` --
+// hands its stdout to updateSubgraphUrlFromDeployOutput() so SUBGRAPH_URL
+// self-heals to whatever version Studio just published instead of going
+// stale after the redeploy.
+async function runDeployPipeline(steps: Array<{ label: string; cmd: string; args: string[] }>) {
+  const log: string[] = [];
+  let deployStdout = "";
+  for (const { label, cmd, args } of steps) {
+    log.push(`$ ${label}`);
+    try {
+      const { stdout, stderr } = await execFileAsync(cmd, args, {
+        cwd: SUBGRAPH_DIR,
+        maxBuffer: 1024 * 1024 * 20,
+      });
+      log.push(stdout.trim(), stderr.trim());
+      if (label === "npm run deploy") deployStdout = stdout;
+    } catch (err) {
+      const e = err as { stdout?: string; stderr?: string; message: string };
+      log.push(e.stdout?.trim() ?? "", e.stderr?.trim() ?? "", `FAILED: ${e.message}`);
+      throw new Error(log.filter(Boolean).join("\n"));
+    }
+  }
+  const newUrl = updateSubgraphUrlFromDeployOutput(deployStdout);
+  if (newUrl) {
+    log.push(`Updated SUBGRAPH_URL -> ${newUrl}`);
+  } else {
+    log.push(
+      "WARNING: could not find a new Queries URL in deploy output -- SUBGRAPH_URL was left unchanged " +
+        "and may now point at a stale (pre-redeploy) version. Check the deploy output above."
+    );
+  }
+  return log.filter(Boolean).join("\n");
+}
+
+server.tool(
+  "get_tracked_tokens",
+  "List the ERC20 tokens this subgraph is currently configured to index (from subgraph.yaml), " +
+    "before deciding what to pass to set_token_sources.",
+  {},
+  async () => {
+    const tokens = readTrackedTokens().map((ds) => ({
+      name: ds.name,
+      address: ds.source.address,
+      startBlock: ds.source.startBlock,
+    }));
+    return textResult(tokens);
+  }
+);
+
 server.tool(
   "add_token_source",
   "Add a new ERC20 contract to this subgraph and redeploy to Graph Studio, so it monitors " +
-    "another token alongside whatever it already tracks. Requires GRAPH_DEPLOY_KEY in " +
-    "subgraph/.env. Runs codegen, build, and deploy -- can take up to a minute.",
+    "another token alongside whatever it already tracks, without disturbing the rest of the set. " +
+    "For removing tokens, or replacing the whole tracked set in one step, use set_token_sources " +
+    "instead. Requires GRAPH_DEPLOY_KEY in the environment (or subgraph/.env for local use). Runs " +
+    "codegen, build, and deploy -- can take up to a minute; wait for it to finish before retrying.",
   {
-    address: z.string().describe("ERC20 contract address to start tracking (0x...)"),
+    address: z.string().regex(tokenAddressPattern).describe("ERC20 contract address to start tracking (0x...)"),
     startBlock: z.number().int().min(0).describe("Block number to start indexing from (deployment/mint block)"),
     name: z
       .string()
@@ -206,31 +296,54 @@ server.tool(
       .describe("Optional dataSource name (defaults to ERC20Token<n>)"),
   },
   async ({ address, startBlock, name }) => {
-    const steps: string[] = [];
-    const run = async (label: string, cmd: string, args: string[]) => {
-      steps.push(`$ ${label}`);
-      try {
-        const { stdout, stderr } = await execFileAsync(cmd, args, {
-          cwd: SUBGRAPH_DIR,
-          maxBuffer: 1024 * 1024 * 20,
-        });
-        steps.push(stdout.trim(), stderr.trim());
-      } catch (err) {
-        const e = err as { stdout?: string; stderr?: string; message: string };
-        steps.push(e.stdout?.trim() ?? "", e.stderr?.trim() ?? "", `FAILED: ${e.message}`);
-        throw new Error(steps.filter(Boolean).join("\n"));
-      }
-    };
-
     const addArgs = ["run", "add-source", "--", "--address", address, "--start-block", String(startBlock)];
     if (name) addArgs.push("--name", name);
 
-    await run("npm run add-source", "npm", addArgs);
-    await run("npm run codegen", "npm", ["run", "codegen"]);
-    await run("npm run build", "npm", ["run", "build"]);
-    await run("npm run deploy", "npm", ["run", "deploy"]);
+    const text = await runDeployPipeline([
+      { label: "npm run add-source", cmd: "npm", args: addArgs },
+      { label: "npm run codegen", cmd: "npm", args: ["run", "codegen"] },
+      { label: "npm run build", cmd: "npm", args: ["run", "build"] },
+      { label: "npm run deploy", cmd: "npm", args: ["run", "deploy"] },
+    ]);
+    return { content: [{ type: "text" as const, text }] };
+  }
+);
 
-    return { content: [{ type: "text" as const, text: steps.filter(Boolean).join("\n") }] };
+server.tool(
+  "set_token_sources",
+  "Replace the ENTIRE set of ERC20 tokens this subgraph tracks with exactly the given list, then " +
+    "redeploy to Graph Studio -- the way to both add and remove tokens in one call (any tracked " +
+    "token not included is dropped). Call get_tracked_tokens first if you need to know the current " +
+    "set before editing it. Requires GRAPH_DEPLOY_KEY in the environment (or subgraph/.env for local " +
+    "use). Runs codegen, build, and deploy -- can take up to a minute; wait for it to finish before " +
+    "retrying, and note freshly-added tokens need time to sync before query tools return their data.",
+  {
+    tokens: z
+      .array(
+        z.object({
+          address: z.string().regex(tokenAddressPattern).describe("ERC20 contract address (0x...)"),
+          startBlock: z.number().int().min(0).describe("Block number to start indexing from"),
+          name: z
+            .string()
+            .optional()
+            .describe("Optional dataSource name (ignored for the first token, which is always named ERC20Token)"),
+        })
+      )
+      .min(1)
+      .describe("The full desired set of tracked tokens -- anything omitted is removed."),
+  },
+  async ({ tokens }) => {
+    const text = await runDeployPipeline([
+      {
+        label: "npm run set-sources",
+        cmd: "npm",
+        args: ["run", "set-sources", "--", "--tokens", JSON.stringify(tokens)],
+      },
+      { label: "npm run codegen", cmd: "npm", args: ["run", "codegen"] },
+      { label: "npm run build", cmd: "npm", args: ["run", "build"] },
+      { label: "npm run deploy", cmd: "npm", args: ["run", "deploy"] },
+    ]);
+    return { content: [{ type: "text" as const, text }] };
   }
 );
 
