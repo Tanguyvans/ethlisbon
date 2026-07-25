@@ -2,25 +2,35 @@
 Hermes Agent — Railway admin server.
 
 Responsibilities:
+  - Public Tokenization Platform reverse proxy at / (root) — the storefront
+    random users land on
   - Admin UI / setup wizard at /setup (Starlette + Jinja, cookie-auth guarded)
   - Management API at /setup/api/* (config, status, logs, gateway, pairing)
-  - Reverse proxy at / and /* → native Hermes dashboard (hermes_cli/web_server, on 127.0.0.1:9119)
+  - Reverse proxy at /hermes and /* → native Hermes dashboard
+    (hermes_cli/web_server, on 127.0.0.1:9119)
   - Managed subprocesses: `hermes gateway` (agent) and `hermes dashboard` (native UI)
   - Cookie-based session auth for Hermes at /login (HMAC-signed, 7-day expiry, httponly)
-  - Public Tokenization Platform reverse proxy at /tokenization
 
 Auth model: Basic Auth was dropped in favor of cookies because the Hermes React
 SPA's plain fetch() calls do not reliably include basic-auth creds across browsers,
 and basic-auth's per-directory protection space forced separate prompts for
-/setup and /. Cookies auto-include on every same-origin request, so both Hermes
-surfaces work with a single login. The tokenization app is intentionally public.
-The cookie signing secret is regenerated on every process start, so any
-ADMIN_PASSWORD change on Railway (which triggers a redeploy) invalidates all
-existing sessions.
+/setup and /hermes. Cookies auto-include on every same-origin request, so both
+Hermes surfaces work with a single login. The tokenization app is intentionally
+public and unguarded. The cookie signing secret is regenerated on every process
+start, so any ADMIN_PASSWORD change on Railway (which triggers a redeploy)
+invalidates all existing sessions.
 
-First-visit behavior: if no provider+model config exists, GET / redirects to /setup.
-Once configured, / proxies to the Hermes dashboard. A small "← Setup" widget is
-injected into every proxied HTML response so users can always return to the wizard.
+Root layout: the Tokenization Next.js app owns / and its own known paths
+(/tokens, /api/tokens, /api/runtime-config, /_next, public/ assets). The native
+Hermes dashboard's own asset/API paths are root-relative and can't be moved
+under a prefix (it's an upstream SPA we don't control), so it keeps living on
+whatever isn't claimed by Tokenization: an explicit /hermes entry point for the
+first page load, then the catch-all `/{path:path}` route for everything else
+(its JS/CSS chunks, `/api/pty` etc., and SPA client-side routes on hard
+refresh). First-visit behavior: if no provider+model config exists, GET /hermes
+redirects to /setup. Once configured, /hermes proxies to the Hermes dashboard.
+A small "← Setup" widget is injected into every proxied HTML response so users
+can always return to the wizard.
 """
 
 # PEP 563 lazy annotations: keeps function/parameter type hints as strings so
@@ -106,9 +116,9 @@ HERMES_DASHBOARD_HOST = "127.0.0.1"
 HERMES_DASHBOARD_PORT = int(os.environ.get("HERMES_DASHBOARD_PORT", "9119"))
 HERMES_DASHBOARD_URL = f"http://{HERMES_DASHBOARD_HOST}:{HERMES_DASHBOARD_PORT}"
 
-# Tokenization Platform — a standalone Next.js server exposed publicly only
-# through the /tokenization reverse proxy. Keeping it on loopback prevents
-# callers from bypassing the gateway and reaching port 3000 directly.
+# Tokenization Platform — a standalone Next.js server exposed publicly at the
+# root domain (/) via reverse proxy. Keeping it on loopback prevents callers
+# from bypassing the gateway and reaching port 3000 directly.
 TOKENIZATION_HOST = "127.0.0.1"
 TOKENIZATION_PORT = int(os.environ.get("TOKENIZATION_PORT", "3000"))
 TOKENIZATION_URL = f"http://{TOKENIZATION_HOST}:{TOKENIZATION_PORT}"
@@ -1274,7 +1284,7 @@ class TokenizationApp:
                 env=env,
             )
             print(
-                f"[tokenization] spawned pid={self.proc.pid} → {TOKENIZATION_URL}/tokenization",
+                f"[tokenization] spawned pid={self.proc.pid} → {TOKENIZATION_URL} (public at /)",
                 flush=True,
             )
             self._drain_task = asyncio.create_task(self._drain())
@@ -1295,7 +1305,7 @@ class TokenizationApp:
             expected_stop = self._stopping or rc in {0, 130, 143, -2, -15}
             if rc is not None and not expected_stop:
                 print(
-                    f"[tokenization] EXITED with code {rc} — /tokenization will return 503",
+                    f"[tokenization] EXITED with code {rc} — / will return 503",
                     flush=True,
                 )
             elif expected_stop:
@@ -1895,7 +1905,7 @@ BACK_TO_SETUP_WIDGET = (
     '<div id="hermes-back-widget" style="position:fixed;bottom:14px;right:14px;'
     'z-index:99999;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;'
     'font-size:11px;display:flex;gap:8px;">'
-    f'<a href="/tokenization" style="{_WIDGET_LINK_STYLE}">'
+    f'<a href="/" style="{_WIDGET_LINK_STYLE}">'
     '<span style="width:6px;height:6px;border-radius:999px;background:#8b5cf6;'
     'box-shadow:0 0 10px rgba(139,92,246,.8)"></span>Tokenization</a>'
     f'<a href="/setup" style="{_WIDGET_LINK_STYLE}">← Setup</a>'
@@ -1937,7 +1947,7 @@ padding:7px 14px;font-size:12px;display:inline-block}</style></head>
 <body><div class="card">
 <h1>Tokenization Platform is starting</h1>
 <p>The private Next.js server is not responding yet. This page will retry automatically.</p>
-<a href="/?force=1">← Back to Hermes</a>
+<a href="/hermes?force=1">← Back to Hermes</a>
 </div><script>setTimeout(()=>location.reload(),3000);</script></body></html>"""
 
 
@@ -2054,7 +2064,7 @@ async def _proxy_to_tokenization(request: Request) -> Response:
     }
     location = resp_headers.get("location")
     if location and location.startswith(TOKENIZATION_URL):
-        resp_headers["location"] = location.removeprefix(TOKENIZATION_URL) or "/tokenization"
+        resp_headers["location"] = location.removeprefix(TOKENIZATION_URL) or "/"
 
     return Response(
         content=upstream.content,
@@ -2067,11 +2077,11 @@ async def route_tokenization(request: Request) -> Response:
     return await _proxy_to_tokenization(request)
 
 
-async def route_root(request: Request) -> Response:
-    """GET /: first-visit smart redirect, otherwise proxy to the dashboard.
+async def route_hermes_dashboard(request: Request) -> Response:
+    """GET /hermes: first-visit smart redirect, otherwise proxy to the dashboard.
 
-    - Unconfigured + bare GET `/` → bounce to `/setup` so new users land on
-      the wizard instead of a half-empty dashboard.
+    - Unconfigured + bare GET `/hermes` → bounce to `/setup` so new users land
+      on the wizard instead of a half-empty dashboard.
     - Sidebar / in-app links pass `?force=1` to opt out of that redirect —
       users who explicitly want the dashboard (e.g. to set providers via
       the Keys tab) can still reach it without saving config first.
@@ -2314,9 +2324,24 @@ routes = [
     # /setup/* typos return a real 404 — not a silent proxy fallthrough.
     Route("/setup/{path:path}",                 route_setup_404,     methods=ANY_METHOD),
 
-    # Public Next.js tokenization UI + API. Hermes and /setup remain protected.
-    Route("/tokenization",                      route_tokenization,  methods=ANY_METHOD),
-    Route("/tokenization/{path:path}",          route_tokenization,  methods=ANY_METHOD),
+    # Public Next.js Tokenization UI + API — this app owns the root domain now,
+    # so its own known page/API/asset paths are claimed explicitly here (all
+    # unauthenticated — see route_tokenization). Everything NOT listed here
+    # falls through to the Hermes dashboard catch-all at the bottom of this
+    # list, exactly as / used to before Tokenization took over root.
+    Route("/",                                  route_tokenization,  methods=ANY_METHOD),
+    Route("/tokens",                            route_tokenization,  methods=ANY_METHOD),
+    Route("/tokens/{path:path}",                route_tokenization,  methods=ANY_METHOD),
+    Route("/api/tokens",                        route_tokenization,  methods=ANY_METHOD),
+    Route("/api/tokens/{path:path}",            route_tokenization,  methods=ANY_METHOD),
+    Route("/api/runtime-config",                route_tokenization,  methods=ANY_METHOD),
+    Route("/_next/{path:path}",                 route_tokenization,  methods=ANY_METHOD),
+    Route("/favicon.ico",                       route_tokenization,  methods=ANY_METHOD),
+    Route("/file.svg",                          route_tokenization,  methods=ANY_METHOD),
+    Route("/globe.svg",                         route_tokenization,  methods=ANY_METHOD),
+    Route("/next.svg",                          route_tokenization,  methods=ANY_METHOD),
+    Route("/vercel.svg",                        route_tokenization,  methods=ANY_METHOD),
+    Route("/window.svg",                        route_tokenization,  methods=ANY_METHOD),
 
     # Reverse-proxy hermes's dashboard WebSockets (Chat tab + sidecar).
     # WebSocketRoute is matched independently of HTTP routes, so order
@@ -2333,10 +2358,17 @@ routes = [
     # WS endpoints in future hermes releases proxy without re-touching this list.
     WebSocketRoute("/api/plugins/{path:path}",  ws_proxy),
 
-    # Root: redirect to /setup if unconfigured, otherwise proxy the dashboard.
-    Route("/",                                  route_root,          methods=ANY_METHOD),
+    # Hermes admin dashboard entry point (cookie-auth guarded): redirect to
+    # /setup if unconfigured, otherwise proxy the dashboard's index page. The
+    # dashboard is an upstream SPA whose own asset/API references are
+    # root-relative and can't be moved under a prefix, so this is only the
+    # first-load entry — its JS/CSS chunks and API calls are unprefixed and
+    # fall through to the catch-all below, same as before Tokenization owned root.
+    Route("/hermes",                            route_hermes_dashboard, methods=ANY_METHOD),
 
-    # Catch-all: everything else proxies to the Hermes dashboard subprocess.
+    # Catch-all: everything else proxies to the Hermes dashboard subprocess
+    # (its static assets, /api/* REST endpoints, and SPA client-side routes
+    # on a hard refresh).
     Route("/{path:path}",                       route_proxy,         methods=ANY_METHOD),
 ]
 

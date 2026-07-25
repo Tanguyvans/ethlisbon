@@ -17,9 +17,9 @@ Deploy [Hermes Agent](https://github.com/NousResearch/hermes-agent) on [Railway]
 - **Live Status** — stat cards for gateway state, uptime, model, and pending pairing requests
 - **Live Logs** — streaming gateway log viewer
 - **User Pairing** — approve or deny users who message your bot, revoke access anytime
-- **Hedera Tokenization UI** — open the integrated Next.js tokenization platform and connect a Hedera wallet from Hermes
+- **Hedera Tokenization Storefront** — the integrated Next.js tokenization platform lives at the root domain; visitors connect a Hedera wallet and acquire available tokens (token creation is an operator-only API call, not a public UI action)
 - **Cookie Auth** — password-protected Hermes dashboard and setup
-- **Public Tokenization UI** — wallet users can open `/tokenization` without the Hermes admin login
+- **Public Tokenization UI** — wallet users can open the root URL without the Hermes admin login; the admin dashboard itself lives at `/hermes`
 - **Reset Config** — one-click reset to start fresh
 - **Backup & Restore** — download a full snapshot (config, credentials, chat history, memories, skills) as a zip, and restore it — including into a fresh project — to clone a deployment. Not encrypted; a safety snapshot is taken automatically before every restore.
 
@@ -74,7 +74,7 @@ Message your Telegram bot. If you're a new user, a pairing request will appear i
 | `HEDERA_OPERATOR_ID` | *(required for token actions)* | Server-side operator/treasury account ID. |
 | `HEDERA_OPERATOR_KEY` | *(required for token actions)* | Server-side operator private key. Never expose it to the browser or agent chat. |
 | `WALLETCONNECT_PROJECT_ID` | *(required for wallet connection)* | Reown project ID served to the wallet client at runtime. |
-| `TOKENIZATION_APP_URL` | *(derived from browser URL)* | Optional canonical public URL ending in `/tokenization`, used in wallet metadata. |
+| `TOKENIZATION_APP_URL` | *(derived from browser URL)* | Optional canonical public URL (your root deploy URL), used in wallet metadata. |
 | `DATABASE_PATH` | `/data/tokenization/tokenization.db` | Persistent SQLite database path in the Railway volume. |
 
 All other configuration (LLM provider, model, channels, tools) is managed through the admin dashboard.
@@ -96,17 +96,17 @@ Parallel (search), Firecrawl (scraping), Tavily (search), FAL (image gen), Brows
 ```
 Railway Container
 ├── Python Admin Server (Starlette + Uvicorn)
-│   ├── /            — Native Hermes dashboard (cookie auth)
+│   ├── /, /tokens/*, /api/tokens/*, /api/runtime-config, /_next/* — Public proxy to the Next.js platform (no auth)
 │   ├── /health      — Health check (no auth)
-│   ├── /setup/api/* — Config, status, logs, gateway, pairing
-│   ├── /tokenization/* — Public proxy to the Next.js platform
+│   ├── /setup/api/* — Config, status, logs, gateway, pairing (cookie auth)
+│   ├── /hermes      — Native Hermes dashboard entry point (cookie auth)
 │   └── /*            — Authenticated proxy to the native Hermes dashboard
 ├── Next.js Tokenization Platform — private loopback subprocess on port 3000
 ├── Hermes dashboard — private loopback subprocess on port 9119
 └── Hermes gateway   — managed async subprocess
 ```
 
-The admin server runs on `$PORT` and manages Hermes plus the tokenization UI as child processes. Hermes config is stored in `/data/.hermes`, while tokenization data is stored in `/data/tokenization/tokenization.db`. The Next.js server is bound to loopback, so its UI and API can only be reached through Hermes authentication.
+The admin server runs on `$PORT` and manages Hermes plus the tokenization UI as child processes. Hermes config is stored in `/data/.hermes`, while tokenization data is stored in `/data/tokenization/tokenization.db`. The Next.js server is bound to loopback and owns the public root domain; the native Hermes dashboard (an upstream SPA that can't be moved under a URL prefix) keeps the rest of the path space, entered via `/hermes`.
 
 ## Running Locally
 
@@ -123,8 +123,8 @@ docker run --rm -it -p 8080:8080 \
   hermes-agent
 ```
 
-Open `http://localhost:8080/tokenization` to use the public tokenization platform.
-The Hermes dashboard at `http://localhost:8080` remains protected with
+Open `http://localhost:8080` to use the public tokenization platform.
+The Hermes dashboard at `http://localhost:8080/hermes` remains protected with
 `admin` / `changeme`.
 
 For Railway, keep the service **Root Directory** set to `/`. The repository-level

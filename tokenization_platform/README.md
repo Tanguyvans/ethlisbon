@@ -21,14 +21,16 @@ means:
 ## Architecture
 
 Single Next.js 16 app (App Router, TypeScript, Tailwind). No separate backend process.
-In the integrated deployment it is built as a standalone Node server under the
-`/tokenization` base path and exposed through Hermes's authenticated reverse proxy.
+In the integrated deployment it is built as a standalone Node server and exposed
+publicly at the root domain through Hermes's reverse proxy — Hermes's own admin
+dashboard lives at `/hermes` instead. There is no public UI for creating new
+tokens; that only happens via a direct `POST /api/tokens` call made by the
+operator.
 
 ```
 src/
   app/
-    page.tsx                     dashboard (server component, reads SQLite directly)
-    create/page.tsx              token creation form
+    page.tsx                     storefront (server component, reads SQLite directly)
     tokens/[tokenId]/page.tsx    token workspace (holder self-service + admin panel)
     api/tokens/...               REST route handlers (operator-signed Hedera actions)
   components/                    React UI
@@ -118,18 +120,21 @@ endpoint on `worldIdVerifiedAt`, the UI badge, the event log entry) is fully wir
    npm install
    npm run dev
    ```
-5. Open http://localhost:3000/tokenization, create a token, then open it in a second browser (or incognito
-   window) with a *different* funded testnet account connected to act as the holder.
+5. Open http://localhost:3000, create a token via `POST /api/tokens` (e.g. `curl`), then open it
+   in a second browser (or incognito window) with a *different* funded testnet account connected
+   to act as the holder.
 
 ## Known simplifications (hackathon scope)
 
 - **Single operator key** backs every token's admin/kyc/freeze/wipe/pause/supply/fee-schedule
   key, and is also the treasury. A production version would generate per-token keys and move
   signing behind an HSM/KMS.
-- **No native request authentication** on the admin/holder API routes. The integrated container
-  mitigates this by binding Next.js to loopback and protecting every `/tokenization/*` request
-  with the Hermes session. Direct standalone deployment still needs session/signature-based
-  authorization before it can be exposed publicly.
+- **No native request authentication** on the admin/holder API routes (pause, wipe, freeze,
+  whitelist, transfer, distribute, etc.) — anyone who can reach the deployment can call them. The
+  integrated container only binds Next.js to loopback, which stops direct access to port 3000; it
+  does **not** gate these routes behind the Hermes session, since the tokenization app is
+  intentionally public. Session/signature-based authorization on the admin-only endpoints is
+  needed before this holds real value beyond a testnet demo.
 - **NFT tokens** can be created (all the same compliance keys apply), but minting individual
   serials / per-serial transfer management isn't built — the workspace UI shows a placeholder
   for non-fungible tokens on the distribute/reclaim panels.

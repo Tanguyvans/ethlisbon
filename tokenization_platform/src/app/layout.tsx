@@ -6,7 +6,7 @@ import WalletConnectButton from "@/components/WalletConnectButton";
 
 export const metadata: Metadata = {
   title: "Hedera Tokenization Platform",
-  description: "Create and manage compliance-controlled real-world-asset tokens on Hedera Token Service",
+  description: "Browse and acquire compliance-controlled real-world-asset tokens on Hedera Token Service",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -20,22 +20,15 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 <span className="text-lg font-semibold tracking-tight">Tokenization Platform</span>
                 <span className="text-xs text-zinc-500 hidden sm:inline">on Hedera Token Service</span>
               </Link>
-              <div className="grid grid-cols-3 items-start gap-2 sm:flex sm:items-center sm:gap-3">
-                {/* This link intentionally exits the Next basePath for the parent Hermes app. */}
-                {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+              <div className="grid grid-cols-2 items-start gap-2 sm:flex sm:items-center sm:gap-3">
+                {/* This link intentionally exits the tokenization app for the parent Hermes admin dashboard. */}
                 <a
-                  href="/?force=1"
+                  href="/hermes?force=1"
                   className="text-sm font-medium rounded-lg border border-violet-300/70 dark:border-violet-700/70 px-2 sm:px-3 py-2 text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 transition flex items-center justify-center gap-2 whitespace-nowrap"
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-violet-500" aria-hidden="true" />
                   Hermes
                 </a>
-                <Link
-                  href="/create"
-                  className="text-sm font-medium rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 px-2 sm:px-3 py-2 hover:opacity-90 transition text-center whitespace-nowrap"
-                >
-                  + Create token
-                </Link>
                 <WalletConnectButton />
               </div>
             </div>

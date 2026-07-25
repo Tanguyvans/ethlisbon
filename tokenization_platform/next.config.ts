@@ -1,9 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Hermes owns the public root and reverse-proxies this application under
-  // /tokenization. Keep this value in sync with src/lib/paths.ts.
-  basePath: "/tokenization",
+  // This app owns the public root — Hermes reverse-proxies its own admin
+  // dashboard under /hermes instead. See src/lib/paths.ts.
 
   // Produce the minimal Node server embedded in the Hermes container.
   output: "standalone",

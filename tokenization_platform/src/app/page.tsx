@@ -19,18 +19,11 @@ export default function DashboardPage() {
   if (tokens.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center text-center py-24 gap-4">
-        <h1 className="text-2xl font-semibold">No tokens yet</h1>
+        <h1 className="text-2xl font-semibold">No tokens available yet</h1>
         <p className="text-zinc-500 max-w-md">
-          Create a compliance-controlled HTS token — securities, real estate, invoices, carbon
-          credits, or any real-world asset — with KYC, freeze, wipe, pause, and World ID /
-          liveness controls built in.
+          Check back soon — compliance-controlled real-world-asset tokens will appear here once
+          they&apos;re available to acquire.
         </p>
-        <Link
-          href="/create"
-          className="mt-2 text-sm font-medium rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 px-4 py-2 hover:opacity-90 transition"
-        >
-          + Create your first token
-        </Link>
       </div>
     );
   }

@@ -1,4 +1,4 @@
-export const TOKENIZATION_BASE_PATH = "/tokenization";
+export const TOKENIZATION_BASE_PATH = "";
 
 export function withTokenizationBasePath(path: string): string {
   if (!path.startsWith("/")) {
