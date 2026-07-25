@@ -115,8 +115,10 @@ def get_token_request(request_id: int) -> dict[str, Any]:
 def fulfill_token_request(request_id: int) -> dict[str, Any]:
     """Atomically fulfill a stored pending request from treasury. The server
     re-validates token type, pause state, wallet association and configured
-    compliance/liveness gates, then sends exactly one display token. Calling
-    this twice cannot create a second transfer.
+    compliance/liveness gates. If the treasury balance is too low and the
+    token has a supply key, it mints only the exact shortfall before sending
+    exactly one display token. Calling this twice cannot create a second mint
+    or transfer.
 
     Args:
         request_id: Integer request id. No destination or amount is accepted.

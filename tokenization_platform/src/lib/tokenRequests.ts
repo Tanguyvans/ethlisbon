@@ -9,7 +9,11 @@ import {
   rejectPendingTokenRequest,
   updateTokenRequest,
 } from "@/lib/db/repo";
-import { transferFromTreasury } from "@/lib/hedera/tokenService";
+import {
+  getTokenBalanceBaseUnits,
+  mintFungible,
+  transferFromTreasury,
+} from "@/lib/hedera/tokenService";
 import type { HolderRecord, TokenRecord, TokenRequestRecord } from "@/types";
 
 export function oneDisplayTokenInBaseUnits(decimals: number): string {
@@ -65,12 +69,60 @@ export async function fulfillStoredTokenRequest(requestId: number): Promise<Toke
   const claimed = claimTokenRequest(requestId);
   if (!claimed) throw new ApiError("This request was claimed by another Hermes run.", 409);
 
+  const requestedAmount = BigInt(claimed.amountBaseUnits);
+  let treasuryBalance: bigint;
+  try {
+    treasuryBalance = await getTokenBalanceBaseUnits(claimed.tokenId, token.treasuryAccountId);
+  } catch (error) {
+    // Balance queries are read-only, so a failed query is always safe to retry.
+    const message = error instanceof Error ? error.message : "Unknown Hedera balance query error";
+    updateTokenRequest(requestId, { status: "PENDING", processingError: message });
+    throw error;
+  }
+
+  if (treasuryBalance < requestedAmount) {
+    if (!token.keys.supply) {
+      const message = "The treasury does not have enough tokens and this token has no supply key.";
+      updateTokenRequest(requestId, { status: "PENDING", processingError: message });
+      throw new ApiError(message, 409);
+    }
+
+    const mintAmount = requestedAmount - treasuryBalance;
+    let mintResult;
+    try {
+      mintResult = await mintFungible(claimed.tokenId, mintAmount);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown Hedera mint error";
+      if (error instanceof ReceiptStatusError) {
+        // A failed consensus receipt proves the mint did not happen, so retrying is safe.
+        updateTokenRequest(requestId, { status: "PENDING", processingError: message });
+      } else {
+        // A transport failure after submission is ambiguous. Keep the request reserved so a
+        // retry cannot accidentally mint the same shortfall twice.
+        updateTokenRequest(requestId, { processingError: message });
+      }
+      throw error;
+    }
+
+    insertEvent({
+      tokenId: claimed.tokenId,
+      type: "TOKEN_MINTED",
+      detail: {
+        requestId,
+        amountBaseUnits: mintAmount.toString(),
+        reason: "treasury shortfall",
+      },
+      txId: mintResult.txId,
+      hashscanUrl: mintResult.hashscanUrl,
+    });
+  }
+
   let result;
   try {
     result = await transferFromTreasury(
       claimed.tokenId,
       claimed.accountId,
-      BigInt(claimed.amountBaseUnits)
+      requestedAmount
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown Hedera transfer error";

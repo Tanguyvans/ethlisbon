@@ -18,6 +18,10 @@ const LABEL: Record<string, string> = {
   SCHEDULE_RECLAIM: "Auto-reclaim scheduled",
   CANCEL_RECLAIM: "Auto-reclaim cancelled",
   AUTO_RECLAIM_EXECUTED: "Auto-reclaim executed",
+  TOKEN_MINTED: "Treasury supply minted",
+  TOKEN_REQUESTED: "Token requested",
+  TOKEN_REQUEST_FULFILLED: "Token sent by Hermes",
+  TOKEN_REQUEST_REJECTED: "Token request rejected",
 };
 
 export default function EventLog({ events }: { events: EventRecord[] }) {

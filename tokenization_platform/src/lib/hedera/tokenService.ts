@@ -10,6 +10,7 @@ import {
   TokenFreezeTransaction,
   TokenGrantKycTransaction,
   TokenId,
+  TokenMintTransaction,
   TokenPauseTransaction,
   TokenRevokeKycTransaction,
   TokenSupplyType,
@@ -135,11 +136,15 @@ export async function createToken(params: CreateTokenParams): Promise<CreateToke
   return { tokenId, txId, hashscanUrl: hashscanTxUrl(txId), keys };
 }
 
-export async function getTokenBalance(tokenId: string, accountId: string): Promise<number> {
+export async function getTokenBalanceBaseUnits(tokenId: string, accountId: string): Promise<bigint> {
   const client = getOperatorClient();
   const balance = await new AccountBalanceQuery().setAccountId(AccountId.fromString(accountId)).execute(client);
   const amount = balance.tokens?.get(TokenId.fromString(tokenId));
-  return amount ? Number(amount.toString()) : 0;
+  return amount ? BigInt(amount.toString()) : BigInt(0);
+}
+
+export async function getTokenBalance(tokenId: string, accountId: string): Promise<number> {
+  return Number(await getTokenBalanceBaseUnits(tokenId, accountId));
 }
 
 export async function isAssociated(tokenId: string, accountId: string): Promise<boolean> {
@@ -168,6 +173,14 @@ async function runAsOperator(tx: any): Promise<TxResult> {
   await response.getReceipt(client);
   const txId = response.transactionId.toString();
   return { txId, hashscanUrl: hashscanTxUrl(txId) };
+}
+
+/** Mint fungible base units into the token treasury. The token supply key is the operator key. */
+export function mintFungible(tokenId: string, amount: number | bigint): Promise<TxResult> {
+  if (BigInt(amount) <= BigInt(0)) throw new Error("Mint amount must be greater than zero.");
+  return runAsOperator(
+    new TokenMintTransaction().setTokenId(TokenId.fromString(tokenId)).setAmount(amount)
+  );
 }
 
 export function grantKyc(tokenId: string, accountId: string): Promise<TxResult> {
