@@ -222,11 +222,10 @@ const tokenAddressPattern = /^0x[0-9a-fA-F]{40}$/;
 
 // Shared by every tool that mutates subgraph.yaml and redeploys: runs a list
 // of npm-script steps in the subgraph dir and collects their combined output
-// for the tool result. deploy.mjs prints the version-pinned URL it just
-// published (handy for debugging a specific deploy), but SUBGRAPH_URL itself
-// doesn't need updating here -- as long as it's the "version/latest" form
-// (see the SUBGRAPH_URL comment above), it already resolves to this new
-// deploy without any action on our part.
+// for the tool result (read by an LLM agent, not a human -- see deploy.mjs
+// for why we redact the version-pinned URL out of its stdout). We append an
+// explicit, unambiguous closing line rather than relying on the agent to
+// correctly infer "no config change needed" from the deploy log.
 async function runDeployPipeline(steps: Array<{ label: string; cmd: string; args: string[] }>) {
   const log: string[] = [];
   for (const { label, cmd, args } of steps) {
@@ -243,6 +242,11 @@ async function runDeployPipeline(steps: Array<{ label: string; cmd: string; args
       throw new Error(log.filter(Boolean).join("\n"));
     }
   }
+  log.push(
+    "Deploy succeeded. No SUBGRAPH_URL / MCP config change is needed -- it should already point at " +
+      "the stable '.../version/latest' Studio URL, which now serves this deploy automatically. Do " +
+      "not tell the user to update SUBGRAPH_URL."
+  );
   return log.filter(Boolean).join("\n");
 }
 

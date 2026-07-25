@@ -1,15 +1,20 @@
 #!/usr/bin/env node
 // Deploys to Graph Studio using GRAPH_DEPLOY_KEY from the environment instead
 // of the interactive `graph auth` flow, so the whole add/remove-token ->
-// deploy pipeline can be driven non-interactively (e.g. from the MCP server).
+// deploy pipeline can be driven non-interactively (e.g. from the MCP server,
+// whose tool result -- including this script's stdout -- is read by an LLM
+// agent, not a human).
 //
-// Every deploy gets a fresh --version-label, which means the version-pinned
-// "Queries (HTTP)" URL Studio prints on success is different every time --
-// don't configure SUBGRAPH_URL from that. Studio also serves a stable
-// "<id>/<name>/version/latest" URL that always resolves to whichever version
-// was deployed most recently, so that's the one to configure once and never
-// touch again. We print both below: the pinned one purely for debugging this
-// specific deploy, and the version/latest one as what SUBGRAPH_URL should be.
+// Every deploy gets a fresh --version-label, so `graph deploy`'s own
+// "Queries (HTTP): https://.../<name>/<version>" success line is a DIFFERENT
+// URL every time. Earlier we surfaced that line (plus a derived
+// "version/latest" one) straight into the tool output "for reference" --
+// in practice an agent reading it treated the ever-changing pinned URL as an
+// actionable "update SUBGRAPH_URL to this" instruction and relayed that to
+// the user, even though SUBGRAPH_URL should be set ONCE to the STABLE
+// "<id>/<name>/version/latest" form (see README) and never touched again.
+// So we now redact the pinned URL out of what the agent sees and replace it
+// with an explicit "nothing to do" statement instead of a URL to misread.
 import { execFileSync } from "node:child_process";
 
 const deployKey = process.env.GRAPH_DEPLOY_KEY;
@@ -50,20 +55,12 @@ try {
   process.exit(err.status ?? 1);
 }
 
-process.stdout.write(output);
-
-// Studio prints a "Queries (HTTP): https://api.studio.thegraph.com/query/<id>/<name>/<version>"
-// line on success. Grab the last studio query URL mentioned, in case other
-// URLs (deploy/playground) also appear in the output.
-const matches = [...output.matchAll(/https:\/\/api\.studio\.thegraph\.com\/query\/(\d+)\/([^/\s]+)\/\S+/g)];
-const lastMatch = matches.at(-1);
-
-if (lastMatch) {
-  const [pinnedUrl, id, name] = lastMatch;
-  console.log(`Deployed version URL (debugging only, changes every deploy): ${pinnedUrl}`);
-  console.log(
-    `SUBGRAPH_URL should be (stable, set this once): https://api.studio.thegraph.com/query/${id}/${name}/version/latest`
-  );
-} else {
-  console.error("Could not find a Queries (HTTP) URL in `graph deploy` output.");
-}
+// Redact the version-pinned "Queries (HTTP)" URL before echoing -- it's a
+// different URL on every deploy, and an agent reading raw tool output tends
+// to treat any URL that looks new as something to relay/act on. Replace it
+// with an unambiguous statement instead so there's nothing to misread.
+const redacted = output.replace(
+  /^(\s*Queries \(HTTP\):\s*).*$/m,
+  "$1(omitted -- irrelevant; SUBGRAPH_URL should already be the stable .../version/latest URL, which needs no update after this or any future deploy)"
+);
+process.stdout.write(redacted);
