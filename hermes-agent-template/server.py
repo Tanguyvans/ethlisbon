@@ -78,6 +78,15 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 HERMES_HOME = os.environ.get("HERMES_HOME", str(Path.home() / ".hermes"))
 ENV_FILE = Path(HERMES_HOME) / ".env"
 
+# Working directory every gateway/cron session starts in. Hermes discovers
+# AGENTS.md (and other project-context files) from the session cwd at startup
+# and injects it into the system prompt — it is NOT read from HERMES_HOME
+# (that path is only scanned for SOUL.md). We point sessions at a dedicated
+# workspace dir (seeded with AGENTS.md by start.sh) rather than /tmp so the
+# agent actually loads its identity/instructions, while keeping the shell cwd
+# out of HERMES_HOME itself (auth.json, .env, sessions live there).
+AGENT_WORKDIR = str(Path(HERMES_HOME) / "workspace")
+
 
 def _resolve_pairing_dir() -> Path:
     """Locate the pairing store the same way hermes' get_hermes_dir() does.
@@ -517,7 +526,7 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
     merged_terminal = dict(merged.get("terminal") if isinstance(merged.get("terminal"), dict) else {})
     merged_terminal["backend"] = "local"
     merged_terminal["timeout"] = 60
-    merged_terminal["cwd"] = "/tmp"
+    merged_terminal["cwd"] = AGENT_WORKDIR
     merged["terminal"] = merged_terminal
 
     merged_agent = dict(merged.get("agent") if isinstance(merged.get("agent"), dict) else {})
@@ -687,7 +696,7 @@ def _apply_xai_oauth_config(model: str) -> None:
     merged_terminal = dict(merged.get("terminal") if isinstance(merged.get("terminal"), dict) else {})
     merged_terminal.setdefault("backend", "local")
     merged_terminal.setdefault("timeout", 60)
-    merged_terminal.setdefault("cwd", "/tmp")
+    merged_terminal.setdefault("cwd", AGENT_WORKDIR)
     merged["terminal"] = merged_terminal
 
     merged_agent = dict(merged.get("agent") if isinstance(merged.get("agent"), dict) else {})
