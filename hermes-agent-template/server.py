@@ -180,7 +180,9 @@ ENV_VARS = [
     ("COMPLIANCE_WORLDID_REQUIRED",        "World ID required",      "token", False),
     ("COMPLIANCE_WORLDID_SELFIE_CHECK",     "Selfie Check",           "token", False),
     ("COMPLIANCE_WORLDID_IDENTITY_CHECK",   "Identity Check",         "token", False),
+    ("COMPLIANCE_WORLDID_AGE_ENABLED",       "Age condition",          "token", False),
     ("COMPLIANCE_WORLDID_MINIMUM_AGE",      "Minimum age",            "token", False),
+    ("COMPLIANCE_WORLDID_NATIONALITY_ENABLED","Nationality condition", "token", False),
     ("COMPLIANCE_WORLDID_NATIONALITY",      "Required nationality",   "token", False),
     ("COMPLIANCE_LIVENESS_ENABLED",        "Liveness re-check",      "token", False),
     ("COMPLIANCE_LIVENESS_PERIOD_SECONDS", "Liveness period (s)",    "token", False),
@@ -363,13 +365,25 @@ def validate_world_id_policy(data: dict[str, str]) -> None:
     enabled = data.get("COMPLIANCE_WORLDID_REQUIRED", "").lower() == "true"
     selfie = data.get("COMPLIANCE_WORLDID_SELFIE_CHECK", "").lower() == "true"
     identity = data.get("COMPLIANCE_WORLDID_IDENTITY_CHECK", "").lower() == "true"
+    age_enabled = data.get("COMPLIANCE_WORLDID_AGE_ENABLED", "").lower() == "true"
+    nationality_enabled = (
+        data.get("COMPLIANCE_WORLDID_NATIONALITY_ENABLED", "").lower() == "true"
+    )
     minimum_age = data.get("COMPLIANCE_WORLDID_MINIMUM_AGE", "").strip()
     nationality = data.get("COMPLIANCE_WORLDID_NATIONALITY", "").strip().upper()
 
     if enabled and not selfie and not identity:
         raise ValueError("World ID requires Selfie Check and/or Identity Check.")
 
-    if minimum_age:
+    identity_enabled = enabled and identity
+    if identity_enabled and not age_enabled and not nationality_enabled:
+        raise ValueError(
+            "Identity Check requires at least one optional condition."
+        )
+
+    if identity_enabled and age_enabled:
+        if not minimum_age:
+            raise ValueError("Enter a minimum age or disable the age condition.")
         try:
             age = int(minimum_age)
         except ValueError as exc:
@@ -377,17 +391,16 @@ def validate_world_id_policy(data: dict[str, str]) -> None:
         if not 1 <= age <= 120:
             raise ValueError("World ID minimum age must be between 1 and 120.")
 
-    if nationality and nationality not in WORLD_ID_NATIONALITIES:
-        raise ValueError(
-            f"Unsupported World ID nationality code: {nationality}."
-        )
-    if nationality:
+    if identity_enabled and nationality_enabled:
+        if not nationality:
+            raise ValueError(
+                "Choose a nationality or disable the nationality condition."
+            )
+        if nationality not in WORLD_ID_NATIONALITIES:
+            raise ValueError(
+                f"Unsupported World ID nationality code: {nationality}."
+            )
         data["COMPLIANCE_WORLDID_NATIONALITY"] = nationality
-
-    if enabled and identity and not minimum_age and not nationality:
-        raise ValueError(
-            "Identity Check requires a minimum age and/or nationality."
-        )
 
 
 def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> None:

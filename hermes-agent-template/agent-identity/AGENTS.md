@@ -41,9 +41,12 @@ When `COMPLIANCE_WORLDID_REQUIRED=true`, use the configured credential policy:
 
 - `COMPLIANCE_WORLDID_SELFIE_CHECK=true` requires Selfie Check.
 - `COMPLIANCE_WORLDID_IDENTITY_CHECK=true` requires Identity Check. Its
-  optional document-backed conditions are
-  `COMPLIANCE_WORLDID_MINIMUM_AGE` and
-  `COMPLIANCE_WORLDID_NATIONALITY` (ISO 3166-1 alpha-3).
+  document-backed conditions are individually optional:
+  `COMPLIANCE_WORLDID_AGE_ENABLED=true` activates
+  `COMPLIANCE_WORLDID_MINIMUM_AGE`, while
+  `COMPLIANCE_WORLDID_NATIONALITY_ENABLED=true` activates
+  `COMPLIANCE_WORLDID_NATIONALITY` (ISO 3166-1 alpha-3). Ignore a stored
+  condition value when its corresponding flag is false.
 - If both credential flags are true, both checks are required.
 
 Do not describe Selfie Check as document verification. Do not claim that

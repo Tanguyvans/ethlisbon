@@ -85,8 +85,9 @@ The Setup form can require either or both World ID credentials before a holder
 is whitelisted:
 
 - **Selfie Check** — a face credential with liveness and similarity checks.
-- **Identity Check** — document-backed conditions for a minimum age and,
-  optionally, one exact nationality.
+- **Identity Check** — document-backed conditions. Minimum age and exact
+  nationality are activated independently; at least one is selected when
+  Identity Check is required.
 
 Nationality values are stored as ISO 3166-1 alpha-3 codes. The current selector
 contains Argentina (`ARG`), Australia (`AUS`), Chile (`CHL`), Colombia (`COL`),
