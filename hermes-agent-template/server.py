@@ -189,7 +189,7 @@ ENV_VARS = [
     ("HEDERA_OPERATOR_ID",       "Operator account ID",      "hedera",    False),
     ("HEDERA_OPERATOR_KEY",      "Operator private key",     "hedera",    True),
     ("WALLETCONNECT_PROJECT_ID", "WalletConnect project ID", "hedera",    False),
-    # ── Token to deploy — parameters (mirror createTokenSchema) ─────────────
+    # ── Defaults for the next token — parameters (mirror createTokenSchema) ─
     ("TOKEN_NAME",               "Token name",               "token",     False),
     ("TOKEN_SYMBOL",             "Token symbol",             "token",     False),
     ("TOKEN_TYPE",               "Token type",               "token",     False),
@@ -199,7 +199,7 @@ ENV_VARS = [
     ("TOKEN_MAX_SUPPLY",         "Max supply",               "token",     False),
     ("TOKEN_ASSET_CATEGORY",     "Asset category",           "token",     False),
     ("TOKEN_MEMO",               "Memo",                     "token",     False),
-    # ── Token to deploy — compliance (mirror complianceSchema) ──────────────
+    # ── Defaults for the next token — compliance (mirror complianceSchema) ─
     ("COMPLIANCE_KYC_REQUIRED",            "KYC required",           "token", False),
     ("COMPLIANCE_FREEZE_DEFAULT",          "Freeze by default",      "token", False),
     ("COMPLIANCE_WIPE_ENABLED",            "Wipe / clawback",        "token", False),
@@ -663,7 +663,7 @@ def write_env(path: Path, data: dict[str, str]) -> None:
                  "email", "mattermost", "matrix", "gateway", "admin"]
     cat_labels = {
         "model": "Model", "provider": "Providers",
-        "hedera": "Hedera operator", "token": "Token to deploy",
+        "hedera": "Hedera operator", "token": "Next token defaults",
         "bedrock": "AWS Bedrock", "azure": "Azure Foundry",
         "custom": "Custom Endpoint", "tool": "Tools",
         "telegram": "Telegram", "discord": "Discord", "slack": "Slack",

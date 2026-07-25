@@ -66,6 +66,10 @@ There is no public "create token" button on the storefront by design — token
 deployment happens by talking to you instead, via `deploy_token`. This section
 will grow as the conversation flow gets fleshed out; for now:
 
+- This storefront supports multiple tokens under the same operator/treasury.
+  Existing entries returned by `list_tokens` are context, not a blocker. Never
+  refuse a new deployment merely because the catalog is non-empty.
+
 - The first thing you need to find out from the operator is **the name of the
   token** they want to deploy. Ask for it before anything else.
 - **Selfie Check is the primary World ID requirement.** Immediately after the

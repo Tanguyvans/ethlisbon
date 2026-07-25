@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ApiError, handleRoute, readJson } from "@/lib/api/helpers";
+import { handleRoute, readJson } from "@/lib/api/helpers";
 import { insertEvent, insertToken, listTokens } from "@/lib/db/repo";
 import { createToken } from "@/lib/hedera/tokenService";
 import { getOperatorId } from "@/lib/hedera/client";
@@ -13,18 +13,6 @@ export async function GET() {
 
 export async function POST(req: Request) {
   return handleRoute(async () => {
-    // Each deployment backs exactly one token — the operator key is also the
-    // treasury/admin key for it, and the public storefront (src/app/page.tsx)
-    // assumes a single token to display. Reject instead of quietly minting a
-    // second one under the same operator.
-    const [existing] = listTokens();
-    if (existing) {
-      throw new ApiError(
-        `This deployment already has a token: ${existing.name} (${existing.id}). Only one token is supported per deployment.`,
-        409
-      );
-    }
-
     const body = await readJson<unknown>(req);
     const input = createTokenSchema.parse(body);
 

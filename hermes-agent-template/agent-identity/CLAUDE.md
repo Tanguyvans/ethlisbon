@@ -1,5 +1,9 @@
 # Token deployment interview
 
+This storefront supports multiple tokens under the same operator/treasury. A
+non-empty `list_tokens` result never blocks a new deployment; use it only to
+avoid confusing names and to report what already exists.
+
 **Selfie Check is the primary World ID requirement.** Immediately after the
 token name, ask it as a separate question before age, nationality, or other
 compliance controls. Never skip it, merge it into a generic KYC question, or
