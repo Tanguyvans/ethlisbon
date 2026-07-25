@@ -29,6 +29,19 @@ mkdir -p /data/.hermes/cron /data/.hermes/sessions /data/.hermes/logs \
 # as the source of truth for the MCP server's own code.
 if [ ! -d /data/graph/subgraph ] && [ -d /opt/graph_experiments/subgraph ]; then
   cp -r /opt/graph_experiments/subgraph /data/graph/subgraph
+
+  # One-time bootstrap only: if the operator already has a synced subgraph in
+  # Studio and passed its query URL via the SUBGRAPH_URL Railway variable,
+  # record it into the SAME persistent file the graph MCP itself reads and
+  # keeps up to date after every redeploy (SUBGRAPH_DIR/.query-url). This
+  # runs only on a brand-new volume, i.e. exactly once ever for a given
+  # deployment -- after that the MCP server owns this file and Railway's
+  # SUBGRAPH_URL is never consulted again, so it can go stale (every
+  # redeploy changes Studio's query URL) without silently clobbering the
+  # MCP's own up-to-date value the way an env-var-sourced config used to.
+  if [ -n "${SUBGRAPH_URL}" ]; then
+    printf '%s\n' "${SUBGRAPH_URL}" > /data/graph/subgraph/.query-url
+  fi
 fi
 
 # Stamp the install method as "docker" so hermes treats this as an immutable
