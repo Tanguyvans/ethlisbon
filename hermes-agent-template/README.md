@@ -79,6 +79,22 @@ Message your Telegram bot. If you're a new user, a pairing request will appear i
 
 All other configuration (LLM provider, model, channels, tools) is managed through the admin dashboard.
 
+### World ID policy
+
+The Setup form can require either or both World ID credentials before a holder
+is whitelisted:
+
+- **Selfie Check** — a face credential with liveness and similarity checks.
+- **Identity Check** — document-backed conditions for a minimum age and,
+  optionally, one exact nationality.
+
+Nationality values are stored as ISO 3166-1 alpha-3 codes. The current selector
+contains Argentina (`ARG`), Australia (`AUS`), Chile (`CHL`), Colombia (`COL`),
+Costa Rica (`CRI`), Croatia (`HRV`), Italy (`ITA`), Japan (`JPN`), Malaysia
+(`MYS`), Mexico (`MEX`), Panama (`PAN`), Portugal (`PRT`), Singapore (`SGP`),
+South Korea (`KOR`), United Kingdom (`GBR`), and United States (`USA`).
+Availability can expand as World adds document support.
+
 ## Supported Providers
 
 OpenRouter, DeepSeek, DashScope, GLM / Z.AI, Kimi, MiniMax, HuggingFace

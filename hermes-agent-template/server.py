@@ -178,6 +178,10 @@ ENV_VARS = [
     ("COMPLIANCE_WIPE_ENABLED",            "Wipe / clawback",        "token", False),
     ("COMPLIANCE_PAUSE_ENABLED",           "Pausable",               "token", False),
     ("COMPLIANCE_WORLDID_REQUIRED",        "World ID required",      "token", False),
+    ("COMPLIANCE_WORLDID_SELFIE_CHECK",     "Selfie Check",           "token", False),
+    ("COMPLIANCE_WORLDID_IDENTITY_CHECK",   "Identity Check",         "token", False),
+    ("COMPLIANCE_WORLDID_MINIMUM_AGE",      "Minimum age",            "token", False),
+    ("COMPLIANCE_WORLDID_NATIONALITY",      "Required nationality",   "token", False),
     ("COMPLIANCE_LIVENESS_ENABLED",        "Liveness re-check",      "token", False),
     ("COMPLIANCE_LIVENESS_PERIOD_SECONDS", "Liveness period (s)",    "token", False),
     ("OPENROUTER_API_KEY",       "OpenRouter",               "provider",  True),
@@ -248,6 +252,11 @@ ENV_VARS = [
 
 SECRET_KEYS  = {k for k, _, _, s in ENV_VARS if s}
 PROVIDER_KEYS = [k for k, _, c, _ in ENV_VARS if c == "provider"]
+
+WORLD_ID_NATIONALITIES = {
+    "ARG", "AUS", "CHL", "COL", "CRI", "GBR", "HRV", "ITA",
+    "JPN", "KOR", "MEX", "MYS", "PAN", "PRT", "SGP", "USA",
+}
 
 # Maps our own provider-key env var to hermes' OWN canonical provider id
 # (hermes_cli/auth.py PROVIDER_REGISTRY, verified against v2026.7.1). Used by
@@ -347,6 +356,38 @@ def read_env(path: Path) -> dict[str, str]:
             v = v[1:-1]
         out[k.strip()] = v
     return out
+
+
+def validate_world_id_policy(data: dict[str, str]) -> None:
+    """Reject World ID combinations the Setup UI cannot represent safely."""
+    enabled = data.get("COMPLIANCE_WORLDID_REQUIRED", "").lower() == "true"
+    selfie = data.get("COMPLIANCE_WORLDID_SELFIE_CHECK", "").lower() == "true"
+    identity = data.get("COMPLIANCE_WORLDID_IDENTITY_CHECK", "").lower() == "true"
+    minimum_age = data.get("COMPLIANCE_WORLDID_MINIMUM_AGE", "").strip()
+    nationality = data.get("COMPLIANCE_WORLDID_NATIONALITY", "").strip().upper()
+
+    if enabled and not selfie and not identity:
+        raise ValueError("World ID requires Selfie Check and/or Identity Check.")
+
+    if minimum_age:
+        try:
+            age = int(minimum_age)
+        except ValueError as exc:
+            raise ValueError("World ID minimum age must be a whole number.") from exc
+        if not 1 <= age <= 120:
+            raise ValueError("World ID minimum age must be between 1 and 120.")
+
+    if nationality and nationality not in WORLD_ID_NATIONALITIES:
+        raise ValueError(
+            f"Unsupported World ID nationality code: {nationality}."
+        )
+    if nationality:
+        data["COMPLIANCE_WORLDID_NATIONALITY"] = nationality
+
+    if enabled and identity and not minimum_age and not nationality:
+        raise ValueError(
+            "Identity Check requires a minimum age and/or nationality."
+        )
 
 
 def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> None:
@@ -1513,6 +1554,7 @@ async def api_config_put(request: Request):
             for k, v in existing.items():
                 if k not in merged:
                     merged[k] = v
+            validate_world_id_policy(merged)
             write_env(ENV_FILE, merged)
             write_config_yaml(merged)
 
@@ -1542,6 +1584,8 @@ async def api_config_put(request: Request):
         if model_warning:
             resp["warning"] = model_warning
         return JSONResponse(resp)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
