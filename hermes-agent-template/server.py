@@ -161,13 +161,16 @@ TOKEN_REQUEST_WEBHOOK_URL = "http://127.0.0.1:8644/webhooks/token-request"
 # edits the agent makes via the MCP survive redeploys; the MCP server code
 # itself stays in the image at GRAPH_MCP_DIR.
 #
-# No SUBGRAPH_URL constant here on purpose — see the comment above the
-# graph_env block in write_config_yaml() for why that one deliberately does
-# NOT flow through Railway env / config.yaml.
+# GRAPH_SUBGRAPH_URL is a plain, static Railway var and stays that way: it
+# MUST be Studio's "<id>/<name>/version/latest" query URL (not the
+# version-pinned one Studio's Details tab shows by default), which Studio
+# itself always resolves to whatever was deployed most recently. So this
+# never goes stale across redeploys and needs no runtime bookkeeping.
 GRAPH_MCP_DIR = os.environ.get("GRAPH_MCP_DIR", "/opt/graph_experiments/mcp-server")
 GRAPH_SUBGRAPH_DIR = os.environ.get("SUBGRAPH_DIR", "/data/graph/subgraph")
 GRAPH_DEPLOY_KEY = os.environ.get("GRAPH_DEPLOY_KEY", "")
 GRAPH_SUBGRAPH_NAME = os.environ.get("GRAPH_SUBGRAPH_NAME", "sepolia-test")
+GRAPH_SUBGRAPH_URL = os.environ.get("SUBGRAPH_URL", "")
 GRAPH_SEPOLIA_RPC_URL = os.environ.get("SEPOLIA_RPC_URL", "")
 
 # Header hermes' own SPA uses to present its per-process session token
@@ -603,18 +606,6 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
     # tsx binary by absolute path rather than `npx tsx` so it resolves
     # deterministically regardless of hermes' subprocess cwd (npx's local-bin
     # lookup walks up from cwd, which isn't GRAPH_MCP_DIR here).
-    #
-    # Deliberately NOT setting SUBGRAPH_URL here. Every subgraph (re)deploy
-    # gets a new Graph Studio version label, which changes the query URL --
-    # a Railway/config.yaml env var would go stale on the very next deploy
-    # and (since this function re-injects it on every gateway boot) keep
-    # clobbering the MCP's own self-healed value with that stale one. The
-    # graph MCP instead tracks its current URL itself, in a file on the same
-    # persistent volume as the subgraph (SUBGRAPH_DIR/.query-url) -- durable
-    # storage that's actually kept up to date, not an env var frozen at
-    # whatever it was set to. start.sh seeds that file once, from Railway's
-    # SUBGRAPH_URL, only when /data/graph/subgraph is first created; from
-    # then on the MCP server owns updating it after every redeploy.
     graph_mcp = mcp_servers.get("graph")
     if not isinstance(graph_mcp, dict):
         graph_mcp = {}
@@ -626,6 +617,8 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
     graph_env["SUBGRAPH_DIR"] = GRAPH_SUBGRAPH_DIR
     graph_env["GRAPH_DEPLOY_KEY"] = GRAPH_DEPLOY_KEY
     graph_env["GRAPH_SUBGRAPH_NAME"] = GRAPH_SUBGRAPH_NAME
+    if GRAPH_SUBGRAPH_URL:
+        graph_env["SUBGRAPH_URL"] = GRAPH_SUBGRAPH_URL
     if GRAPH_SEPOLIA_RPC_URL:
         graph_env["SEPOLIA_RPC_URL"] = GRAPH_SEPOLIA_RPC_URL
     graph_mcp["env"] = graph_env

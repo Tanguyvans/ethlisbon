@@ -3,11 +3,13 @@
 // of the interactive `graph auth` flow, so the whole add/remove-token ->
 // deploy pipeline can be driven non-interactively (e.g. from the MCP server).
 //
-// Every deploy gets a fresh --version-label, which means Graph Studio's
-// query URL (it embeds the version label) changes on every deploy. We
-// capture that URL from `graph deploy`'s own stdout and print it as a
-// machine-parseable `QUERY_URL=<url>` line so callers (the MCP server) can
-// pick up the new endpoint instead of querying a stale, pre-redeploy version.
+// Every deploy gets a fresh --version-label, which means the version-pinned
+// "Queries (HTTP)" URL Studio prints on success is different every time --
+// don't configure SUBGRAPH_URL from that. Studio also serves a stable
+// "<id>/<name>/version/latest" URL that always resolves to whichever version
+// was deployed most recently, so that's the one to configure once and never
+// touch again. We print both below: the pinned one purely for debugging this
+// specific deploy, and the version/latest one as what SUBGRAPH_URL should be.
 import { execFileSync } from "node:child_process";
 
 const deployKey = process.env.GRAPH_DEPLOY_KEY;
@@ -53,13 +55,15 @@ process.stdout.write(output);
 // Studio prints a "Queries (HTTP): https://api.studio.thegraph.com/query/<id>/<name>/<version>"
 // line on success. Grab the last studio query URL mentioned, in case other
 // URLs (deploy/playground) also appear in the output.
-const matches = [...output.matchAll(/https:\/\/api\.studio\.thegraph\.com\/query\/\S+/g)];
-const queryUrl = matches.at(-1)?.[0];
+const matches = [...output.matchAll(/https:\/\/api\.studio\.thegraph\.com\/query\/(\d+)\/([^/\s]+)\/\S+/g)];
+const lastMatch = matches.at(-1);
 
-if (queryUrl) {
-  console.log(`QUERY_URL=${queryUrl}`);
-} else {
-  console.error(
-    "Could not find a Queries (HTTP) URL in `graph deploy` output -- SUBGRAPH_URL was not updated."
+if (lastMatch) {
+  const [pinnedUrl, id, name] = lastMatch;
+  console.log(`Deployed version URL (debugging only, changes every deploy): ${pinnedUrl}`);
+  console.log(
+    `SUBGRAPH_URL should be (stable, set this once): https://api.studio.thegraph.com/query/${id}/${name}/version/latest`
   );
+} else {
+  console.error("Could not find a Queries (HTTP) URL in `graph deploy` output.");
 }

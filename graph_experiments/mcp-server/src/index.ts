@@ -2,7 +2,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -13,39 +13,30 @@ const execFileAsync = promisify(execFile);
 
 const SEPOLIA_RPC_URL = process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
 // Overridable so a deployment can point this at a writable, volume-backed
-// copy of the subgraph (code ships in the image; the manifest + deploy-key
-// side effects need to persist across redeploys). Defaults to the sibling
-// checkout for local/dev use.
+// copy of the subgraph (code ships in the image; the manifest needs to
+// persist across redeploys). Defaults to the sibling checkout for local/dev
+// use.
 const SUBGRAPH_DIR = process.env.SUBGRAPH_DIR
   ? path.resolve(process.env.SUBGRAPH_DIR)
   : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../subgraph");
 const MANIFEST_PATH = path.join(SUBGRAPH_DIR, "subgraph.yaml");
 
-// Every subgraph deploy gets a fresh version label, and Graph Studio's query
-// URL embeds that label -- so the URL we started with goes stale the moment
-// anyone (re)deploys. We persist the latest known-good URL next to the
-// manifest so it survives process restarts, and update it in place whenever
-// a deploy tool successfully parses a new one out of `graph deploy` output.
-const QUERY_URL_FILE = path.join(SUBGRAPH_DIR, ".query-url");
-
-let SUBGRAPH_URL: string | undefined = existsSync(QUERY_URL_FILE)
-  ? readFileSync(QUERY_URL_FILE, "utf8").trim() || undefined
-  : process.env.SUBGRAPH_URL;
-
-function updateSubgraphUrlFromDeployOutput(output: string): string | undefined {
-  const match = output.match(/^QUERY_URL=(\S+)$/m);
-  if (!match) return undefined;
-  SUBGRAPH_URL = match[1];
-  writeFileSync(QUERY_URL_FILE, `${SUBGRAPH_URL}\n`);
-  return SUBGRAPH_URL;
-}
+// MUST be the "/version/latest" query URL (Studio Details tab shows a
+// version-pinned one by default, e.g. ".../sepolia-test/auto-1785...") --
+// swap the trailing version label for the literal path segment
+// "version/latest" and Studio always resolves it to whatever was deployed
+// most recently, so this env var stays correct across every redeploy
+// without anything needing to track/update it.
+const SUBGRAPH_URL = process.env.SUBGRAPH_URL;
 
 async function queryGraph(query: string, variables?: Record<string, unknown>) {
   if (!SUBGRAPH_URL) {
     throw new Error(
       "SUBGRAPH_URL is not set. Deploy the subgraph in ../subgraph to Graph Studio (e.g. via the " +
-        "set_token_sources tool), or set SUBGRAPH_URL to its query endpoint (Studio 'Details' tab " +
-        "-> Query URL)."
+        "set_token_sources tool), then set SUBGRAPH_URL to its query endpoint using the " +
+        "'version/latest' path segment (not the version-pinned URL Studio's 'Details' tab shows), " +
+        "e.g. https://api.studio.thegraph.com/query/<id>/<name>/version/latest -- that way it keeps " +
+        "resolving to whatever was deployed most recently."
     );
   }
   const res = await fetch(SUBGRAPH_URL, {
@@ -230,14 +221,14 @@ server.tool(
 const tokenAddressPattern = /^0x[0-9a-fA-F]{40}$/;
 
 // Shared by every tool that mutates subgraph.yaml and redeploys: runs a list
-// of npm-script steps in the subgraph dir, collects their combined output for
-// the tool result, and -- since the final step is always `npm run deploy` --
-// hands its stdout to updateSubgraphUrlFromDeployOutput() so SUBGRAPH_URL
-// self-heals to whatever version Studio just published instead of going
-// stale after the redeploy.
+// of npm-script steps in the subgraph dir and collects their combined output
+// for the tool result. deploy.mjs prints the version-pinned URL it just
+// published (handy for debugging a specific deploy), but SUBGRAPH_URL itself
+// doesn't need updating here -- as long as it's the "version/latest" form
+// (see the SUBGRAPH_URL comment above), it already resolves to this new
+// deploy without any action on our part.
 async function runDeployPipeline(steps: Array<{ label: string; cmd: string; args: string[] }>) {
   const log: string[] = [];
-  let deployStdout = "";
   for (const { label, cmd, args } of steps) {
     log.push(`$ ${label}`);
     try {
@@ -246,21 +237,11 @@ async function runDeployPipeline(steps: Array<{ label: string; cmd: string; args
         maxBuffer: 1024 * 1024 * 20,
       });
       log.push(stdout.trim(), stderr.trim());
-      if (label === "npm run deploy") deployStdout = stdout;
     } catch (err) {
       const e = err as { stdout?: string; stderr?: string; message: string };
       log.push(e.stdout?.trim() ?? "", e.stderr?.trim() ?? "", `FAILED: ${e.message}`);
       throw new Error(log.filter(Boolean).join("\n"));
     }
-  }
-  const newUrl = updateSubgraphUrlFromDeployOutput(deployStdout);
-  if (newUrl) {
-    log.push(`Updated SUBGRAPH_URL -> ${newUrl}`);
-  } else {
-    log.push(
-      "WARNING: could not find a new Queries URL in deploy output -- SUBGRAPH_URL was left unchanged " +
-        "and may now point at a stale (pre-redeploy) version. Check the deploy output above."
-    );
   }
   return log.filter(Boolean).join("\n");
 }

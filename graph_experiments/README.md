@@ -31,10 +31,19 @@ npm run build
 npm run deploy   # deploys to the subgraph name "sepolia-test" — rename in package.json if you used a different name in Studio
 ```
 
-Wait for the Studio dashboard to show the subgraph fully synced, then copy its **Query URL**
-from the "Details" tab (looks like
-`https://api.studio.thegraph.com/query/<id>/sepolia-test/<version>`).
-Queries against Studio's own endpoint are free — no GRT/billing needed for this experiment.
+Wait for the Studio dashboard to show the subgraph fully synced, then grab its query URL from the
+"Details" tab -- but use the **`version/latest`** form, not the version-pinned one Studio shows by
+default (`.../sepolia-test/auto-<timestamp>`, which freezes to that specific deploy):
+
+```
+https://api.studio.thegraph.com/query/<id>/sepolia-test/version/latest
+```
+
+Studio always resolves `version/latest` to whichever version was deployed most recently, so
+`SUBGRAPH_URL` set to this form never goes stale -- every future redeploy (via `add_token_source`
+/ `set_token_sources`) is picked up automatically, no config changes needed. `deploy.mjs` prints
+both forms after every deploy as a reminder. Queries against Studio's own endpoint are free — no
+GRT/billing needed for this experiment.
 
 ## 2. Run the MCP server
 
@@ -68,15 +77,13 @@ To wire it into Claude Code, add an entry to your MCP config pointing at this se
   wrapper, can't remove anything.
 - The first dataSource is always named `ERC20Token` regardless of what you pass — `src/mapping.ts`
   imports codegen output from that fixed name, so it can't be renamed per-token.
-- Every deploy gets a fresh Graph Studio version label, which changes the query URL. Both deploy
-  tools parse the new URL out of `graph deploy`'s own output and update `SUBGRAPH_URL` in place
-  (persisted to `subgraph/.query-url`), so query tools keep working after a redeploy without any
-  manual step.
+- Every deploy gets a fresh Graph Studio version label, but that's invisible to `SUBGRAPH_URL` as
+  long as it's set to the `version/latest` form (see step 1 above) — no runtime bookkeeping needed.
 
 ## Notes
 
 - "Biggest transfer" defaults to excluding mints/burns (`excludeMintBurn: true`) since those are
   usually not representative of real holder-to-holder activity — pass `false` to include them.
 - This is wired into the Hermes Railway deployment (`hermes-agent-template/`) as the `graph` MCP
-  server — see that template's `.env.example` for the `GRAPH_DEPLOY_KEY` / `GRAPH_SUBGRAPH_NAME`
-  Railway variables it needs.
+  server — see that template's `.env.example` for the `GRAPH_DEPLOY_KEY` / `GRAPH_SUBGRAPH_NAME` /
+  `SUBGRAPH_URL` Railway variables it needs.
