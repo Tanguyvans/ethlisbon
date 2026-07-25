@@ -1,69 +1,25 @@
-import Link from "next/link";
-import { listTokens } from "@/lib/db/repo";
-import { Badge } from "@/components/ui";
+import RwaMarketplace from "@/components/RwaMarketplace";
+import { RWA_TOKENS } from "@/lib/rwaCatalog";
 
 export const dynamic = "force-dynamic";
 
-const CATEGORY_LABEL: Record<string, string> = {
-  securities: "Securities",
-  "real-estate": "Real estate",
-  invoices: "Invoices",
-  "carbon-credits": "Carbon credits",
-  commodities: "Commodities",
-  other: "Other",
-};
-
 export default function DashboardPage() {
-  const tokens = listTokens();
-
-  if (tokens.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center text-center py-24 gap-4">
-        <h1 className="text-2xl font-semibold">No tokens available yet</h1>
-        <p className="text-zinc-500 max-w-md">
-          Check back soon — compliance-controlled real-world-asset tokens will appear here once
-          they&apos;re available to acquire.
-        </p>
-      </div>
-    );
-  }
+  const appId = process.env.NEXT_PUBLIC_WORLD_APP_ID ?? "";
+  const isConfigured = Boolean(
+    appId && process.env.WORLD_RP_ID && process.env.WORLD_RP_SIGNING_KEY,
+  );
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Tokens</h1>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {tokens.map((token) => (
-          <Link
-            key={token.id}
-            href={`/tokens/${token.id}`}
-            className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 flex flex-col gap-3 hover:border-zinc-400 dark:hover:border-zinc-600 transition"
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="font-semibold">{token.name}</div>
-                <div className="text-sm text-zinc-500">{token.symbol} · {token.id}</div>
-              </div>
-              <span className="text-[10px] uppercase tracking-wide rounded-full bg-zinc-100 dark:bg-zinc-800 px-2 py-1">
-                {token.tokenType}
-              </span>
-            </div>
-            <div className="text-xs text-zinc-500">
-              {token.assetCategory ? CATEGORY_LABEL[token.assetCategory] ?? token.assetCategory : "—"}
-            </div>
-            <div className="flex flex-wrap gap-1 mt-auto">
-              {token.compliance.kycRequired && <Badge>KYC</Badge>}
-              {token.compliance.freezeDefault && <Badge>Freeze-gated</Badge>}
-              {token.compliance.wipeEnabled && <Badge>Wipe</Badge>}
-              {token.compliance.pauseEnabled && <Badge>Pausable</Badge>}
-              {token.compliance.worldIdRequired && <Badge tone="violet">World ID</Badge>}
-              {token.compliance.livenessEnabled && <Badge tone="amber">Liveness</Badge>}
-              {token.paused && <Badge tone="red">PAUSED</Badge>}
-            </div>
-          </Link>
-        ))}
-      </div>
-    </div>
+    <RwaMarketplace
+      tokens={RWA_TOKENS}
+      worldConfig={{
+        appId,
+        isConfigured,
+        selfieEnvironment: "production",
+        identityEnvironment: "staging",
+        selfieSignal:
+          process.env.NEXT_PUBLIC_WORLD_SIGNAL ?? "rwa-marketplace-holder",
+      }}
+    />
   );
 }

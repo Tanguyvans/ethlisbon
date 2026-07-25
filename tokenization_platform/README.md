@@ -43,7 +43,7 @@ src/
       format.ts                 HashScan link helpers
     db/                         better-sqlite3 (schema in schema.ts, queries in repo.ts)
     walletconnect/connector.ts  browser DAppConnector singleton
-    worldid/mock.ts             STUBBED World ID verification (see below)
+    worldid/verification.ts     shared World verification API client
     validation.ts               zod schemas for every API route
   types/index.ts                shared domain types
 ```
@@ -95,13 +95,23 @@ Caveats (documented in code comments too):
 - Hedera caps how far in the future a schedule's expiry can be — pick a demo-friendly period
   (minutes) rather than a realistic one (months) if you want to actually see it fire live.
 
-## World ID stub
+## World ID access demo
 
-`src/lib/worldid/mock.ts` always "verifies" successfully — the product brief explicitly deferred
-real World ID integration. Every caller only depends on `verifyWorldId(accountId)`'s signature,
-so swapping in a real [IDKit](https://docs.world.org/world-id) `verifyCloudProof()` call is a
-one-file change. The rest of the pipeline (the `worldIdRequired` checkbox, gating the whitelist
-endpoint on `worldIdVerifiedAt`, the UI badge, the event log entry) is fully wired up today.
+The storefront exposes five mock RWA policies and runs real World ID verification
+before marking their conditions as satisfied:
+
+- **Selfie Check** uses `selfieCheckLegacy` in `production`, requires fresh user
+  presence, and verifies the Face proof through World API v4.
+- **Identity Check** uses World ID 4 in `staging`, so its `18+` and `USA`
+  attribute requests can be completed through the World Simulator. The
+  application only receives the attestation result, never the document data.
+- Accepted proofs are remembered only in the browser tab for the demo. No
+  payment or token purchase is performed.
+
+Configure `NEXT_PUBLIC_WORLD_APP_ID`, `WORLD_RP_ID`,
+`WORLD_RP_SIGNING_KEY`, `WORLD_ACTION`, and `WORLD_IDENTITY_ACTION` as
+documented in `.env.example`. The legacy holder-workspace endpoint still uses
+`src/lib/worldid/mock.ts`; it is separate from the new storefront proof flow.
 
 ## Setup
 
