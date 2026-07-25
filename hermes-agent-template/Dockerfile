@@ -1,3 +1,18 @@
+FROM node:22-bookworm-slim AS tokenization-builder
+
+WORKDIR /build/tokenization
+
+# Install dependencies before copying application sources so Docker can reuse
+# the expensive npm layer while only UI/application code changes.
+COPY tokenization_platform/package.json tokenization_platform/package-lock.json ./
+RUN npm ci
+
+COPY tokenization_platform/ ./
+RUN npm run build && \
+    cp -r public .next/standalone/ && \
+    cp -r .next/static .next/standalone/.next/
+
+
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 # Which hermes-agent revision to install. Accepts any git ref the upstream
@@ -77,18 +92,22 @@ RUN git clone --depth 1 --branch ${HERMES_REF} https://github.com/NousResearch/h
 # editable from /opt/hermes-agent.
 RUN printf 'docker\n' > /opt/hermes-agent/.install_method
 
-COPY requirements.txt /app/requirements.txt
+COPY hermes-agent-template/requirements.txt /app/requirements.txt
 RUN uv pip install --system --no-cache -r /app/requirements.txt
 
-RUN mkdir -p /data/.hermes
+RUN mkdir -p /data/.hermes /data/tokenization
 
-COPY server.py /app/server.py
-COPY templates/ /app/templates/
-COPY start.sh /app/start.sh
+COPY hermes-agent-template/server.py /app/server.py
+COPY hermes-agent-template/templates/ /app/templates/
+COPY hermes-agent-template/start.sh /app/start.sh
+COPY --from=tokenization-builder /build/tokenization/.next/standalone/ /app/tokenization/
 RUN chmod +x /app/start.sh
 
 ENV HOME=/data
 ENV HERMES_HOME=/data/.hermes
+ENV TOKENIZATION_APP_DIR=/app/tokenization
+ENV TOKENIZATION_PORT=3000
+ENV DATABASE_PATH=/data/tokenization/tokenization.db
 
 # Points hermes at our pre-built TUI bundle. hermes's _make_tui_argv checks
 # HERMES_TUI_DIR first: if dist/entry.js exists there, it skips the npm

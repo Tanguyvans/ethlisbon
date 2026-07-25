@@ -17,7 +17,8 @@ Deploy [Hermes Agent](https://github.com/NousResearch/hermes-agent) on [Railway]
 - **Live Status** — stat cards for gateway state, uptime, model, and pending pairing requests
 - **Live Logs** — streaming gateway log viewer
 - **User Pairing** — approve or deny users who message your bot, revoke access anytime
-- **Basic Auth** — password-protected admin panel
+- **Hedera Tokenization UI** — open the integrated Next.js tokenization platform and connect a Hedera wallet from Hermes
+- **Cookie Auth** — one password-protected session across Hermes and tokenization
 - **Reset Config** — one-click reset to start fresh
 - **Backup & Restore** — download a full snapshot (config, credentials, chat history, memories, skills) as a zip, and restore it — including into a fresh project — to clone a deployment. Not encrypted; a safety snapshot is taken automatically before every restore.
 
@@ -66,8 +67,14 @@ Message your Telegram bot. If you're a new user, a pairing request will appear i
 |----------|---------|-------------|
 | `PORT` | `8080` | Web server port (set automatically by Railway) |
 | `ADMIN_USERNAME` | `admin` | Basic auth username |
-| `ADMIN_PASSWORD` | *(auto-generated)* | Basic auth password — if unset, a random password is printed to logs |
+| `ADMIN_PASSWORD` | *(auto-generated)* | Sign-in password — if unset, a random password is printed to logs |
 | `HERMES_REF` | *(pinned in Dockerfile)* | Hermes Agent version to install (any upstream git tag/branch). Set this to override the Dockerfile default without editing code — see [Updating Hermes](#updating-hermes). |
+| `HEDERA_NETWORK` | `testnet` | Hedera network used by both the operator and connected wallets. |
+| `HEDERA_OPERATOR_ID` | *(required for token actions)* | Server-side operator/treasury account ID. |
+| `HEDERA_OPERATOR_KEY` | *(required for token actions)* | Server-side operator private key. Never expose it to the browser or agent chat. |
+| `WALLETCONNECT_PROJECT_ID` | *(required for wallet connection)* | Reown project ID served to the wallet client at runtime. |
+| `TOKENIZATION_APP_URL` | *(derived from browser URL)* | Optional canonical public URL ending in `/tokenization`, used in wallet metadata. |
+| `DATABASE_PATH` | `/data/tokenization/tokenization.db` | Persistent SQLite database path in the Railway volume. |
 
 All other configuration (LLM provider, model, channels, tools) is managed through the admin dashboard.
 
@@ -88,22 +95,38 @@ Parallel (search), Firecrawl (scraping), Tavily (search), FAL (image gen), Brows
 ```
 Railway Container
 ├── Python Admin Server (Starlette + Uvicorn)
-│   ├── /            — Admin dashboard (Basic Auth)
+│   ├── /            — Native Hermes dashboard (cookie auth)
 │   ├── /health      — Health check (no auth)
-│   └── /api/*       — Config, status, logs, gateway, pairing
-└── hermes gateway   — Managed as async subprocess
+│   ├── /setup/api/* — Config, status, logs, gateway, pairing
+│   ├── /tokenization/* — Authenticated proxy to the Next.js platform
+│   └── /*            — Authenticated proxy to the native Hermes dashboard
+├── Next.js Tokenization Platform — private loopback subprocess on port 3000
+├── Hermes dashboard — private loopback subprocess on port 9119
+└── Hermes gateway   — managed async subprocess
 ```
 
-The admin server runs on `$PORT` and manages the Hermes gateway as a child process. Config is stored in `/data/.hermes/.env` and `/data/.hermes/config.yaml`. Gateway stdout/stderr is captured into a ring buffer and streamed to the Logs panel.
+The admin server runs on `$PORT` and manages Hermes plus the tokenization UI as child processes. Hermes config is stored in `/data/.hermes`, while tokenization data is stored in `/data/tokenization/tokenization.db`. The Next.js server is bound to loopback, so its UI and API can only be reached through Hermes authentication.
 
 ## Running Locally
 
 ```bash
-docker build -t hermes-agent .
-docker run --rm -it -p 8080:8080 -e PORT=8080 -e ADMIN_PASSWORD=changeme -v hermes-data:/data hermes-agent
+docker build -f hermes-agent-template/Dockerfile -t hermes-agent .
+docker run --rm -it -p 8080:8080 \
+  -e PORT=8080 \
+  -e ADMIN_PASSWORD=changeme \
+  -e HEDERA_NETWORK=testnet \
+  -e HEDERA_OPERATOR_ID=0.0.xxxxx \
+  -e HEDERA_OPERATOR_KEY=your-private-key \
+  -e WALLETCONNECT_PROJECT_ID=your-project-id \
+  -v hermes-data:/data \
+  hermes-agent
 ```
 
-Open `http://localhost:8080` and log in with `admin` / `changeme`.
+Open `http://localhost:8080`, log in with `admin` / `changeme`, then use the **Tokenization** control in the Hermes widget.
+
+For Railway, keep the service **Root Directory** set to `/`. The repository-level
+`railway.toml` selects `hermes-agent-template/Dockerfile`, whose build context
+needs both `hermes-agent-template/` and `tokenization_platform/`.
 
 ## Updating Hermes
 

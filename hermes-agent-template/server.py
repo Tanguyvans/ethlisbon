@@ -104,19 +104,35 @@ HERMES_DASHBOARD_HOST = "127.0.0.1"
 HERMES_DASHBOARD_PORT = int(os.environ.get("HERMES_DASHBOARD_PORT", "9119"))
 HERMES_DASHBOARD_URL = f"http://{HERMES_DASHBOARD_HOST}:{HERMES_DASHBOARD_PORT}"
 
+# Tokenization Platform — a standalone Next.js server reachable only through
+# this authenticated reverse proxy. Keeping it on loopback prevents callers
+# from bypassing Hermes auth and reaching the currently hackathon-scoped admin
+# API routes directly.
+TOKENIZATION_HOST = "127.0.0.1"
+TOKENIZATION_PORT = int(os.environ.get("TOKENIZATION_PORT", "3000"))
+TOKENIZATION_URL = f"http://{TOKENIZATION_HOST}:{TOKENIZATION_PORT}"
+TOKENIZATION_APP_DIR = Path(os.environ.get("TOKENIZATION_APP_DIR", "/app/tokenization"))
+
 # Header hermes' own SPA uses to present its per-process session token
 # (hermes_cli/web_server.py's _SESSION_HEADER_NAME) — see
 # set_active_model_via_hermes()/_get_hermes_session_token() for why our own
 # server-to-server calls to the dashboard need it even on our loopback bind.
 _SESSION_TOKEN_HEADER = "X-Hermes-Session-Token"
 
-# Mirror dashboard-ref-only/auth_proxy.py: strip only `host` (httpx sets it)
-# and `transfer-encoding` (httpx recomputes it from the body). Keep everything
-# else — notably `authorization`, because the SPA uses Bearer tokens against
-# hermes's own /api/env/reveal and OAuth endpoints, and keep `cookie` since
-# some hermes endpoints read it. Aggressive stripping was masking requests in
-# ways that produced spurious 401s.
-HOP_BY_HOP = {"host", "transfer-encoding"}
+# Strip transport-scoped headers that must not cross a reverse proxy. Keep
+# end-to-end auth headers — notably `authorization`, because the Hermes SPA
+# uses Bearer tokens, and `cookie`, which carries our authenticated session.
+HOP_BY_HOP = {
+    "host",
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+}
 
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
@@ -1216,6 +1232,88 @@ class Dashboard:
 
 dash = Dashboard()
 
+
+# ── Tokenization Platform subprocess ─────────────────────────────────────────
+class TokenizationApp:
+    """Run the standalone Next.js application on a private loopback port."""
+
+    def __init__(self):
+        self.proc: asyncio.subprocess.Process | None = None
+        self.logs: deque[str] = deque(maxlen=300)
+        self._drain_task: asyncio.Task | None = None
+        self._stopping = False
+
+    async def start(self):
+        if self.proc and self.proc.returncode is None:
+            return
+        self._stopping = False
+        server_entrypoint = TOKENIZATION_APP_DIR / "server.js"
+        if not server_entrypoint.is_file():
+            print(
+                f"[tokenization] standalone server missing at {server_entrypoint}",
+                flush=True,
+            )
+            return
+
+        env = os.environ.copy()
+        env.update({
+            "NODE_ENV": "production",
+            "HOSTNAME": TOKENIZATION_HOST,
+            "PORT": str(TOKENIZATION_PORT),
+        })
+        env.setdefault("DATABASE_PATH", "/data/tokenization/tokenization.db")
+
+        try:
+            self.proc = await asyncio.create_subprocess_exec(
+                "node",
+                "server.js",
+                cwd=str(TOKENIZATION_APP_DIR),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env=env,
+            )
+            print(
+                f"[tokenization] spawned pid={self.proc.pid} → {TOKENIZATION_URL}/tokenization",
+                flush=True,
+            )
+            self._drain_task = asyncio.create_task(self._drain())
+        except Exception as e:
+            print(f"[tokenization] FAILED to spawn: {e!r}", flush=True)
+
+    async def _drain(self):
+        assert self.proc and self.proc.stdout
+        try:
+            async for raw in self.proc.stdout:
+                line = ANSI_ESCAPE.sub("", raw.decode(errors="replace").rstrip())
+                self.logs.append(line)
+                print(f"[tokenization] {line}", flush=True)
+        except Exception as e:
+            print(f"[tokenization] drain error: {e!r}", flush=True)
+        finally:
+            rc = self.proc.returncode if self.proc else None
+            expected_stop = self._stopping or rc in {0, 130, 143, -2, -15}
+            if rc is not None and not expected_stop:
+                print(
+                    f"[tokenization] EXITED with code {rc} — /tokenization will return 503",
+                    flush=True,
+                )
+            elif expected_stop:
+                print(f"[tokenization] stopped cleanly (code {rc})", flush=True)
+
+    async def stop(self):
+        if not self.proc or self.proc.returncode is not None:
+            return
+        self._stopping = True
+        self.proc.terminate()
+        try:
+            await asyncio.wait_for(self.proc.wait(), timeout=10)
+        except asyncio.TimeoutError:
+            self.proc.kill()
+            await self.proc.wait()
+
+
+tokenization = TokenizationApp()
+
 # Shared async HTTP client for the reverse proxy. Created lazily so we pick up
 # the running event loop, torn down in lifespan.
 _http_client: httpx.AsyncClient | None = None
@@ -1796,6 +1894,9 @@ BACK_TO_SETUP_WIDGET = (
     '<div id="hermes-back-widget" style="position:fixed;bottom:14px;right:14px;'
     'z-index:99999;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;'
     'font-size:11px;display:flex;gap:8px;">'
+    f'<a href="/tokenization" style="{_WIDGET_LINK_STYLE}">'
+    '<span style="width:6px;height:6px;border-radius:999px;background:#8b5cf6;'
+    'box-shadow:0 0 10px rgba(139,92,246,.8)"></span>Tokenization</a>'
     f'<a href="/setup" style="{_WIDGET_LINK_STYLE}">← Setup</a>'
     f'<a href="/logout" style="{_WIDGET_LINK_STYLE}">Sign out</a>'
     '</div>'
@@ -1821,6 +1922,22 @@ It may still be starting up, or it may have crashed.</p>
 </div>
 <script>setTimeout(()=>location.reload(),4000);</script>
 </body></html>""" % HERMES_DASHBOARD_PORT
+
+TOKENIZATION_UNAVAILABLE_HTML = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Tokenization starting…</title>
+<style>body{background:#09090b;color:#e4e4e7;font-family:ui-monospace,Menlo,monospace;
+display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+.card{max-width:500px;padding:32px;border:1px solid #27272a;border-radius:12px;
+background:#18181b;text-align:center}
+h1{font-size:16px;color:#a78bfa;margin:0 0 12px;font-weight:600}
+p{font-size:13px;color:#a1a1aa;line-height:1.6;margin:0 0 16px}
+a{color:#c4b5fd;text-decoration:none;border:1px solid #3f3f46;border-radius:6px;
+padding:7px 14px;font-size:12px;display:inline-block}</style></head>
+<body><div class="card">
+<h1>Tokenization Platform is starting</h1>
+<p>The private Next.js server is not responding yet. This page will retry automatically.</p>
+<a href="/?force=1">← Back to Hermes</a>
+</div><script>setTimeout(()=>location.reload(),3000);</script></body></html>"""
 
 
 async def _proxy_to_dashboard(request: Request) -> Response:
@@ -1867,7 +1984,7 @@ async def _proxy_to_dashboard(request: Request) -> Response:
     resp_headers = {
         k: v for k, v in upstream.headers.items()
         if k.lower() not in HOP_BY_HOP
-        and k.lower() not in ("content-encoding", "content-length")
+        and k.lower() not in ("content-encoding", "content-length", "date")
     }
 
     content = upstream.content
@@ -1887,6 +2004,67 @@ async def _proxy_to_dashboard(request: Request) -> Response:
         status_code=upstream.status_code,
         headers=resp_headers,
     )
+
+
+async def _proxy_to_tokenization(request: Request) -> Response:
+    """Forward an authenticated request to the loopback-only Next.js server."""
+    client = get_http_client()
+    target = f"{TOKENIZATION_URL}{request.url.path}"
+    if request.url.query:
+        target = f"{target}?{request.url.query}"
+
+    req_headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in HOP_BY_HOP
+    }
+    req_headers["x-forwarded-host"] = request.headers.get("host", "")
+    req_headers["x-forwarded-proto"] = request.url.scheme
+    body = await request.body()
+
+    try:
+        upstream = await client.request(
+            request.method,
+            target,
+            headers=req_headers,
+            content=body,
+        )
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        return HTMLResponse(TOKENIZATION_UNAVAILABLE_HTML, status_code=503)
+    except httpx.RequestError as e:
+        print(
+            f"[tokenization-proxy] upstream error for {request.method} "
+            f"{request.url.path}: {e}",
+            flush=True,
+        )
+        return HTMLResponse(TOKENIZATION_UNAVAILABLE_HTML, status_code=502)
+
+    if upstream.status_code >= 400:
+        body_snip = upstream.content[:200].decode("utf-8", errors="replace")
+        print(
+            f"[tokenization-proxy] {request.method} {request.url.path} "
+            f"-> {upstream.status_code} body={body_snip!r}",
+            flush=True,
+        )
+
+    resp_headers = {
+        k: v for k, v in upstream.headers.items()
+        if k.lower() not in HOP_BY_HOP
+        and k.lower() not in ("content-encoding", "content-length", "date")
+    }
+    location = resp_headers.get("location")
+    if location and location.startswith(TOKENIZATION_URL):
+        resp_headers["location"] = location.removeprefix(TOKENIZATION_URL) or "/tokenization"
+
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        headers=resp_headers,
+    )
+
+
+async def route_tokenization(request: Request) -> Response:
+    if err := guard(request): return err
+    return await _proxy_to_tokenization(request)
 
 
 async def route_root(request: Request) -> Response:
@@ -1933,6 +2111,7 @@ async def lifespan(app):
     # Dashboard runs always — it's the user-facing UI after setup is done,
     # and it's independent of gateway state.
     asyncio.create_task(dash.start())
+    asyncio.create_task(tokenization.start())
     await auto_start()
     try:
         yield
@@ -1940,6 +2119,7 @@ async def lifespan(app):
         await asyncio.gather(
             gw.stop(),
             dash.stop(),
+            tokenization.stop(),
             return_exceptions=True,
         )
         global _http_client
@@ -2133,6 +2313,10 @@ routes = [
 
     # /setup/* typos return a real 404 — not a silent proxy fallthrough.
     Route("/setup/{path:path}",                 route_setup_404,     methods=ANY_METHOD),
+
+    # Next.js tokenization UI + API, protected by the same Hermes session.
+    Route("/tokenization",                      route_tokenization,  methods=ANY_METHOD),
+    Route("/tokenization/{path:path}",          route_tokenization,  methods=ANY_METHOD),
 
     # Reverse-proxy hermes's dashboard WebSockets (Chat tab + sidecar).
     # WebSocketRoute is matched independently of HTTP routes, so order

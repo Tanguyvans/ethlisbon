@@ -18,7 +18,7 @@ mkdir -p /data/.hermes/cron /data/.hermes/sessions /data/.hermes/logs \
          /data/.hermes/memories /data/.hermes/skills /data/.hermes/platforms/pairing \
          /data/.hermes/hooks /data/.hermes/cache/images /data/.hermes/cache/audio \
          /data/.hermes/workspace /data/.hermes/skins /data/.hermes/plans \
-         /data/.hermes/home
+         /data/.hermes/home /data/tokenization
 
 # Stamp the install method as "docker" so hermes treats this as an immutable
 # container image, not a pip checkout. hermes's detect_install_method() reads
