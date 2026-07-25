@@ -110,6 +110,25 @@ export interface HolderRecord {
   updatedAt: string;
 }
 
+export type TokenRequestStatus = "PENDING" | "PROCESSING" | "FULFILLED" | "REJECTED";
+export type HermesTriggerStatus = "NOT_TRIGGERED" | "TRIGGERED" | "FAILED";
+
+export interface TokenRequestRecord {
+  id: number;
+  tokenId: string;
+  accountId: string;
+  amountBaseUnits: string;
+  status: TokenRequestStatus;
+  triggerStatus: HermesTriggerStatus;
+  triggerError: string | null;
+  processingError: string | null;
+  rejectionReason: string | null;
+  fulfillmentTxId: string | null;
+  fulfillmentHashscanUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type EventType =
   | "CREATE_TOKEN"
   | "ASSOCIATE"
@@ -126,7 +145,10 @@ export type EventType =
   | "CHECKIN"
   | "SCHEDULE_RECLAIM"
   | "CANCEL_RECLAIM"
-  | "AUTO_RECLAIM_EXECUTED";
+  | "AUTO_RECLAIM_EXECUTED"
+  | "TOKEN_REQUESTED"
+  | "TOKEN_REQUEST_FULFILLED"
+  | "TOKEN_REQUEST_REJECTED";
 
 export interface EventRecord {
   id: number;

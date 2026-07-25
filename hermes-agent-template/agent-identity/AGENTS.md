@@ -46,6 +46,16 @@ directly — use these instead of trying to `curl` the API yourself:
 - `reclaim_now` — claw back a holder's entire balance to the treasury (wipe or
   allowance-based, whichever the token supports).
 - `pause_token` — pause/unpause all transfers of a token.
+- `list_token_requests` / `get_token_request` — inspect durable holder requests.
+- `fulfill_token_request` — idempotently send exactly one display token for a
+  stored eligible request. The stored account and amount cannot be overridden.
+- `reject_token_request` — reject a pending request only for a definitive
+  compliance failure; transient failures must remain pending for retry.
+
+When a `token-request` webhook starts a run, complete the workflow in that run:
+read the request, inspect its live token/holder state, then call either
+`fulfill_token_request` or (for a definitive compliance failure)
+`reject_token_request`. Never use `distribute` for a storefront request.
 
 NFT collections deploy at supply 0 — per-serial minting isn't wired up on this
 platform yet, so don't promise a holder a minted NFT after `deploy_token`.

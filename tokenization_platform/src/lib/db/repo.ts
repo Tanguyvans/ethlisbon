@@ -7,6 +7,9 @@ import type {
   HolderRecord,
   HolderStatus,
   TokenRecord,
+  TokenRequestRecord,
+  TokenRequestStatus,
+  HermesTriggerStatus,
   TokenType,
   SupplyType,
   AssetCategory,
@@ -74,6 +77,22 @@ interface EventRow {
   tx_id: string | null;
   hashscan_url: string | null;
   created_at: string;
+}
+
+interface TokenRequestRow {
+  id: number;
+  token_id: string;
+  account_id: string;
+  amount_base_units: string;
+  status: string;
+  trigger_status: string;
+  trigger_error: string | null;
+  processing_error: string | null;
+  rejection_reason: string | null;
+  fulfillment_tx_id: string | null;
+  fulfillment_hashscan_url: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 function mapToken(row: TokenRow): TokenRecord {
@@ -162,6 +181,24 @@ function mapEvent(row: EventRow): EventRecord {
     txId: row.tx_id,
     hashscanUrl: row.hashscan_url,
     createdAt: row.created_at,
+  };
+}
+
+function mapTokenRequest(row: TokenRequestRow): TokenRequestRecord {
+  return {
+    id: row.id,
+    tokenId: row.token_id,
+    accountId: row.account_id,
+    amountBaseUnits: row.amount_base_units,
+    status: row.status as TokenRequestStatus,
+    triggerStatus: row.trigger_status as HermesTriggerStatus,
+    triggerError: row.trigger_error,
+    processingError: row.processing_error,
+    rejectionReason: row.rejection_reason,
+    fulfillmentTxId: row.fulfillment_tx_id,
+    fulfillmentHashscanUrl: row.fulfillment_hashscan_url,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -322,6 +359,133 @@ export function updateHolder(tokenId: string, accountId: string, patch: HolderPa
   getDb()
     .prepare(`UPDATE holders SET ${setClauses.join(", ")} WHERE token_id = ? AND account_id = ?`)
     .run(...values, tokenId, accountId);
+}
+
+// --- token requests (holder -> Hermes -> one treasury token) ---
+
+export function createOrReopenTokenRequest(
+  tokenId: string,
+  accountId: string,
+  amountBaseUnits: string
+): { request: TokenRequestRecord; started: boolean; created: boolean } {
+  const db = getDb();
+  const existing = getTokenRequestForHolder(tokenId, accountId);
+  let started = false;
+  let created = false;
+
+  if (!existing) {
+    const result = db
+      .prepare(
+        `INSERT INTO token_requests (token_id, account_id, amount_base_units)
+         VALUES (?, ?, ?)
+         ON CONFLICT(token_id, account_id) DO NOTHING`
+      )
+      .run(tokenId, accountId, amountBaseUnits);
+    started = result.changes === 1;
+    created = started;
+  } else if (existing.status === "REJECTED") {
+    const result = db
+      .prepare(
+        `UPDATE token_requests
+         SET status = 'PENDING', amount_base_units = ?, trigger_status = 'NOT_TRIGGERED',
+             trigger_error = NULL, processing_error = NULL, rejection_reason = NULL,
+             updated_at = datetime('now')
+         WHERE id = ? AND status = 'REJECTED'`
+      )
+      .run(amountBaseUnits, existing.id);
+    started = result.changes === 1;
+  }
+
+  return { request: getTokenRequestForHolder(tokenId, accountId)!, started, created };
+}
+
+export function getTokenRequest(id: number): TokenRequestRecord | null {
+  const row = getDb().prepare("SELECT * FROM token_requests WHERE id = ?").get(id) as
+    | TokenRequestRow
+    | undefined;
+  return row ? mapTokenRequest(row) : null;
+}
+
+export function getTokenRequestForHolder(
+  tokenId: string,
+  accountId: string
+): TokenRequestRecord | null {
+  const row = getDb()
+    .prepare("SELECT * FROM token_requests WHERE token_id = ? AND account_id = ?")
+    .get(tokenId, accountId) as TokenRequestRow | undefined;
+  return row ? mapTokenRequest(row) : null;
+}
+
+export function listTokenRequestsForToken(tokenId: string): TokenRequestRecord[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM token_requests WHERE token_id = ? ORDER BY created_at DESC, id DESC")
+    .all(tokenId) as TokenRequestRow[];
+  return rows.map(mapTokenRequest);
+}
+
+export function listTokenRequests(status?: TokenRequestStatus): TokenRequestRecord[] {
+  const rows = (status
+    ? getDb()
+        .prepare("SELECT * FROM token_requests WHERE status = ? ORDER BY created_at ASC, id ASC")
+        .all(status)
+    : getDb().prepare("SELECT * FROM token_requests ORDER BY created_at ASC, id ASC").all()) as
+    TokenRequestRow[];
+  return rows.map(mapTokenRequest);
+}
+
+export interface TokenRequestPatch {
+  status?: TokenRequestStatus;
+  triggerStatus?: HermesTriggerStatus;
+  triggerError?: string | null;
+  processingError?: string | null;
+  rejectionReason?: string | null;
+  fulfillmentTxId?: string | null;
+  fulfillmentHashscanUrl?: string | null;
+}
+
+const TOKEN_REQUEST_PATCH_COLUMN: Record<keyof TokenRequestPatch, string> = {
+  status: "status",
+  triggerStatus: "trigger_status",
+  triggerError: "trigger_error",
+  processingError: "processing_error",
+  rejectionReason: "rejection_reason",
+  fulfillmentTxId: "fulfillment_tx_id",
+  fulfillmentHashscanUrl: "fulfillment_hashscan_url",
+};
+
+export function updateTokenRequest(id: number, patch: TokenRequestPatch): TokenRequestRecord | null {
+  const entries = Object.entries(patch) as [keyof TokenRequestPatch, unknown][];
+  if (entries.length === 0) return getTokenRequest(id);
+  const clauses = entries.map(([key]) => `${TOKEN_REQUEST_PATCH_COLUMN[key]} = ?`);
+  clauses.push("updated_at = datetime('now')");
+  getDb()
+    .prepare(`UPDATE token_requests SET ${clauses.join(", ")} WHERE id = ?`)
+    .run(...entries.map(([, value]) => value as string | null), id);
+  return getTokenRequest(id);
+}
+
+/** Atomically reserves a pending request so concurrent Hermes runs cannot send it twice. */
+export function claimTokenRequest(id: number): TokenRequestRecord | null {
+  const result = getDb()
+    .prepare(
+      `UPDATE token_requests
+       SET status = 'PROCESSING', processing_error = NULL, updated_at = datetime('now')
+       WHERE id = ? AND status = 'PENDING'`
+    )
+    .run(id);
+  return result.changes === 1 ? getTokenRequest(id) : null;
+}
+
+export function rejectPendingTokenRequest(id: number, reason: string): TokenRequestRecord | null {
+  const result = getDb()
+    .prepare(
+      `UPDATE token_requests
+       SET status = 'REJECTED', rejection_reason = ?, processing_error = NULL,
+           updated_at = datetime('now')
+       WHERE id = ? AND status = 'PENDING'`
+    )
+    .run(reason, id);
+  return result.changes === 1 ? getTokenRequest(id) : null;
 }
 
 // --- events (audit trail shown in the UI) ---

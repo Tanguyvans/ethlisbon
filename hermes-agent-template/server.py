@@ -142,6 +142,15 @@ TOKENIZATION_PORT = int(os.environ.get("TOKENIZATION_PORT", "3000"))
 TOKENIZATION_URL = f"http://{TOKENIZATION_HOST}:{TOKENIZATION_PORT}"
 TOKENIZATION_APP_DIR = Path(os.environ.get("TOKENIZATION_APP_DIR", "/app/tokenization"))
 
+# Internal capabilities shared only by sibling processes in this container.
+# Operators may provide stable values through Railway, otherwise a fresh pair is generated on
+# every boot and injected into both the Next.js app and the managed Hermes configuration.
+TOKENIZATION_AGENT_SECRET = os.environ.get("TOKENIZATION_AGENT_SECRET") or secrets.token_urlsafe(32)
+TOKEN_REQUEST_WEBHOOK_SECRET = (
+    os.environ.get("TOKEN_REQUEST_WEBHOOK_SECRET") or secrets.token_urlsafe(32)
+)
+TOKEN_REQUEST_WEBHOOK_URL = "http://127.0.0.1:8644/webhooks/token-request"
+
 # Header hermes' own SPA uses to present its per-process session token
 # (hermes_cli/web_server.py's _SESSION_HEADER_NAME) — see
 # set_active_model_via_hermes()/_get_hermes_session_token() for why our own
@@ -204,6 +213,7 @@ ENV_VARS = [
     ("COMPLIANCE_WORLDID_NATIONALITY",      "Required nationality",   "token", False),
     ("COMPLIANCE_LIVENESS_ENABLED",        "Liveness re-check",      "token", False),
     ("COMPLIANCE_LIVENESS_PERIOD_SECONDS", "Liveness period (s)",    "token", False),
+    ("OPENAI_API_KEY",           "OpenAI API",              "provider",  True),
     ("OPENROUTER_API_KEY",       "OpenRouter",               "provider",  True),
     ("DEEPSEEK_API_KEY",         "DeepSeek",                 "provider",  True),
     ("DASHSCOPE_API_KEY",        "Qwen Cloud (DashScope)",   "provider",  True),
@@ -288,6 +298,7 @@ WORLD_ID_NATIONALITIES = {
 # hf->huggingface, ollama->ollama-cloud) — re-verify every entry against
 # hermes_cli/auth.py on a Hermes version bump (same audit as the WS allowlist).
 HERMES_PROVIDER_IDS = {
+    "OPENAI_API_KEY":        "openai-api",
     "OPENROUTER_API_KEY":    "openrouter",
     "DEEPSEEK_API_KEY":      "deepseek",
     "DASHSCOPE_API_KEY":     "alibaba",       # "Qwen Cloud" in hermes' own UI
@@ -465,7 +476,13 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
         merged_model = {"default": ""}
     else:
         merged_model = dict(merged.get("model") if isinstance(merged.get("model"), dict) else {})
-        merged_model["default"] = model
+        # A model chosen in Hermes' native dashboard lives in config.yaml, not
+        # necessarily in our setup wrapper's LLM_MODEL env var. Preserve it on
+        # boot; only overwrite it when our own UI supplied a non-empty model.
+        if model:
+            merged_model["default"] = model
+        else:
+            merged_model.setdefault("default", "")
         current_provider = str(merged_model.get("provider") or "").strip()
         # Only default to "auto" on a config that has never had a provider
         # pinned. Once a provider is set explicitly — either by
@@ -544,22 +561,64 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
 
     merged["data_dir"] = HERMES_HOME
 
-    # Seed the Hedera tokenization MCP server so the agent gets deploy_token,
-    # whitelist_holder, distribute, etc. as native tools without any manual
-    # `hermes mcp add` step. mcp_servers is otherwise operator/hermes-managed
-    # (see the docstring above) — setdefault() only fills in our "hedera" key
-    # if it's missing, so this never clobbers an operator's own edit (e.g.
-    # disabling it, or a different command) and coexists with any other MCP
-    # servers they've added via the dashboard.
+    # Seed/update only the deployment-managed parts of the Hedera MCP entry.
+    # Other MCP servers and optional keys on this entry remain untouched.
     mcp_servers = merged.get("mcp_servers")
     if not isinstance(mcp_servers, dict):
         mcp_servers = {}
-    mcp_servers.setdefault("hedera", {
-        "command": "python",
-        "args": ["/app/hedera_mcp.py"],
-        "env": {"TOKENIZATION_BASE_URL": TOKENIZATION_URL},
-    })
+    hedera_mcp = mcp_servers.get("hedera")
+    if not isinstance(hedera_mcp, dict):
+        hedera_mcp = {}
+    hedera_mcp.setdefault("command", "python")
+    hedera_mcp.setdefault("args", ["/app/hedera_mcp.py"])
+    hedera_env = hedera_mcp.get("env")
+    if not isinstance(hedera_env, dict):
+        hedera_env = {}
+    hedera_env["TOKENIZATION_BASE_URL"] = TOKENIZATION_URL
+    hedera_env["TOKENIZATION_AGENT_SECRET"] = TOKENIZATION_AGENT_SECRET
+    hedera_mcp["env"] = hedera_env
+    mcp_servers["hedera"] = hedera_mcp
     merged["mcp_servers"] = mcp_servers
+
+    # The storefront POSTs a signed event here after committing a request to
+    # SQLite. This route launches a real agent run; its narrow prompt contains
+    # no user-authored instructions and directs Hermes through the idempotent
+    # request tools rather than the unrestricted distribution tool.
+    platforms = merged.get("platforms")
+    if not isinstance(platforms, dict):
+        platforms = {}
+    webhook = platforms.get("webhook")
+    if not isinstance(webhook, dict):
+        webhook = {}
+    webhook["enabled"] = True
+    webhook_extra = webhook.get("extra")
+    if not isinstance(webhook_extra, dict):
+        webhook_extra = {}
+    webhook_extra["host"] = "127.0.0.1"
+    webhook_extra["port"] = 8644
+    routes = webhook_extra.get("routes")
+    if not isinstance(routes, dict):
+        routes = {}
+    routes["token-request"] = {
+        "events": ["token_request"],
+        "secret": TOKEN_REQUEST_WEBHOOK_SECRET,
+        "prompt": (
+            "A holder submitted stored token request #{request_id}. "
+            "Use the hedera MCP get_token_request tool with request_id={request_id}, "
+            "then inspect the referenced token and holder using get_token. "
+            "If the live state is eligible, call fulfill_token_request with this request id. "
+            "If a compliance condition definitively fails, call reject_token_request with a "
+            "concise reason. For a transient API, network, model, or Hedera error, do not reject "
+            "the request; report the error and preserve its server-managed state. Never call "
+            "distribute for this workflow, "
+            "never change the destination or amount, and do not merely describe what should happen."
+        ),
+        "deliver": "log",
+    }
+    webhook_extra["routes"] = routes
+    webhook["extra"] = webhook_extra
+    platforms["webhook"] = webhook
+    merged["platforms"] = platforms
 
     # Custom OpenAI-compatible endpoint — write custom_providers block when configured,
     # remove it when not (safe on Railway where users don't hand-edit config.yaml).
@@ -890,7 +949,41 @@ def is_config_complete(data: dict[str, str] | None = None) -> bool:
     if data is None:
         data = read_env(ENV_FILE)
     has_model = bool(data.get("LLM_MODEL"))
-    has_provider = any(data.get(k) for k in PROVIDER_KEYS) or _has_xai_oauth_tokens()
+    configured_provider = ""
+    if not has_model:
+        # Hermes' native Models page persists its choice directly to
+        # config.yaml. Recognise that state so a deployment configured there
+        # still auto-starts the gateway and its webhook adapter.
+        try:
+            import yaml
+            config_path = Path(HERMES_HOME) / "config.yaml"
+            with config_path.open() as f:
+                config = yaml.safe_load(f)
+            model_config = config.get("model", {}) if isinstance(config, dict) else {}
+            if isinstance(model_config, dict):
+                has_model = bool(model_config.get("default") or model_config.get("model"))
+                configured_provider = str(model_config.get("provider") or "").strip()
+        except Exception:
+            has_model = False
+    else:
+        # We still need the native provider below (notably OAuth providers).
+        try:
+            import yaml
+            with (Path(HERMES_HOME) / "config.yaml").open() as f:
+                config = yaml.safe_load(f)
+            model_config = config.get("model", {}) if isinstance(config, dict) else {}
+            if isinstance(model_config, dict):
+                configured_provider = str(model_config.get("provider") or "").strip()
+        except Exception:
+            pass
+    has_provider = (
+        any(data.get(k) for k in PROVIDER_KEYS)
+        or _has_xai_oauth_tokens()
+        # Native Hermes model setup pins authenticated OAuth providers such as
+        # openai-codex directly in config.yaml. Let Hermes validate/refresh its
+        # own auth store rather than incorrectly declaring the wrapper incomplete.
+        or bool(configured_provider and configured_provider.lower() != "auto")
+    )
     return has_model and has_provider
 
 
@@ -1395,6 +1488,9 @@ class TokenizationApp:
             "NODE_ENV": "production",
             "HOSTNAME": TOKENIZATION_HOST,
             "PORT": str(TOKENIZATION_PORT),
+            "TOKENIZATION_AGENT_SECRET": TOKENIZATION_AGENT_SECRET,
+            "HERMES_TOKEN_REQUEST_WEBHOOK_URL": TOKEN_REQUEST_WEBHOOK_URL,
+            "HERMES_TOKEN_REQUEST_WEBHOOK_SECRET": TOKEN_REQUEST_WEBHOOK_SECRET,
         })
         env.setdefault("DATABASE_PATH", "/data/tokenization/tokenization.db")
 
@@ -2245,6 +2341,11 @@ async def auto_start():
 @asynccontextmanager
 async def lifespan(app):
     _sweep_stale_backup_tmpdirs()
+    # MCP servers and the token-request webhook are deployment capabilities,
+    # not optional provider settings. Materialise them even when model setup is
+    # incomplete so they appear in the dashboard and are ready once a provider
+    # is configured.
+    write_config_yaml(read_env(ENV_FILE))
     # Dashboard runs always — it's the user-facing UI after setup is done,
     # and it's independent of gateway state.
     asyncio.create_task(dash.start())

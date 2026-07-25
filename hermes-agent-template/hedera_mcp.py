@@ -29,6 +29,7 @@ import httpx
 from mcp.server.fastmcp import FastMCP
 
 BASE_URL = os.environ.get("TOKENIZATION_BASE_URL", "http://127.0.0.1:3000").rstrip("/")
+AGENT_SECRET = os.environ.get("TOKENIZATION_AGENT_SECRET", "")
 
 mcp = FastMCP("hedera")
 
@@ -41,8 +42,9 @@ class TokenizationApiError(RuntimeError):
 
 def _call(method: str, path: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
     url = f"{BASE_URL}{path}"
+    headers = {"X-Tokenization-Agent-Secret": AGENT_SECRET} if AGENT_SECRET else {}
     try:
-        resp = httpx.request(method, url, json=json, timeout=30.0)
+        resp = httpx.request(method, url, json=json, headers=headers, timeout=30.0)
     except httpx.HTTPError as exc:
         raise TokenizationApiError(
             f"Could not reach the tokenization API at {url}: {exc}. "
@@ -78,6 +80,61 @@ def get_token(token_id: str) -> dict[str, Any]:
         token_id: Hedera token id, e.g. "0.0.123456".
     """
     return _call("GET", f"/api/tokens/{token_id}")
+
+
+@mcp.tool()
+def list_token_requests(status: str = "PENDING") -> dict[str, Any]:
+    """List durable holder token requests, normally the pending queue. Use
+    this for recovery or operator review; webhook-triggered work should use
+    get_token_request with the exact id from the prompt.
+
+    Args:
+        status: PENDING, PROCESSING, FULFILLED, or REJECTED. Pass an empty
+            string only when the operator explicitly asks for every request.
+    """
+    normalized = status.strip().upper()
+    if normalized and normalized not in {"PENDING", "PROCESSING", "FULFILLED", "REJECTED"}:
+        raise TokenizationApiError("Invalid request status.")
+    suffix = f"?status={normalized}" if normalized else ""
+    return _call("GET", f"/api/token-requests{suffix}")
+
+
+@mcp.tool()
+def get_token_request(request_id: int) -> dict[str, Any]:
+    """Read one durable request before acting. The stored token, account and
+    exact one-display-token amount are authoritative and cannot be changed by
+    the fulfillment tool.
+
+    Args:
+        request_id: Integer request id supplied by the webhook or queue.
+    """
+    return _call("GET", f"/api/token-requests/{request_id}")
+
+
+@mcp.tool()
+def fulfill_token_request(request_id: int) -> dict[str, Any]:
+    """Atomically fulfill a stored pending request from treasury. The server
+    re-validates token type, pause state, wallet association and configured
+    compliance/liveness gates, then sends exactly one display token. Calling
+    this twice cannot create a second transfer.
+
+    Args:
+        request_id: Integer request id. No destination or amount is accepted.
+    """
+    return _call("POST", f"/api/token-requests/{request_id}/fulfill")
+
+
+@mcp.tool()
+def reject_token_request(request_id: int, reason: str) -> dict[str, Any]:
+    """Reject a pending request after a definitive compliance failure. Do not
+    reject transient API, network, provider, or Hedera errors; leave those
+    pending for retry.
+
+    Args:
+        request_id: Integer request id.
+        reason: Concise holder-facing reason, maximum 500 characters.
+    """
+    return _call("POST", f"/api/token-requests/{request_id}/reject", json={"reason": reason})
 
 
 @mcp.tool()

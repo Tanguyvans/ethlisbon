@@ -77,6 +77,16 @@ export const registerHolderSchema = z.object({
   evmAddress: z.string().trim().optional(),
 });
 
+export const createTokenRequestSchema = z.object({
+  accountId: accountIdSchema,
+});
+
+export const tokenRequestStatusSchema = z.enum(["PENDING", "PROCESSING", "FULFILLED", "REJECTED"]);
+
+export const rejectTokenRequestSchema = z.object({
+  reason: z.string().trim().min(1).max(500),
+});
+
 export const txReceiptSchema = z.object({
   txId: z.string().trim().min(1),
 });

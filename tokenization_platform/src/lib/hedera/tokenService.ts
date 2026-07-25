@@ -216,7 +216,11 @@ export async function wipeAllFungible(tokenId: string, accountId: string): Promi
 }
 
 /** Treasury -> holder distribution of a fungible token. */
-export function transferFromTreasury(tokenId: string, toAccountId: string, amount: number): Promise<TxResult> {
+export function transferFromTreasury(
+  tokenId: string,
+  toAccountId: string,
+  amount: number | bigint
+): Promise<TxResult> {
   const operatorId = getOperatorId();
   const tx = new TransferTransaction()
     .addTokenTransfer(TokenId.fromString(tokenId), operatorId, -amount)

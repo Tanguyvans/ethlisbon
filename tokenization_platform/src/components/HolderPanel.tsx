@@ -1,26 +1,53 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@/hooks/useWalletConnect";
 import { postJson } from "@/lib/apiClient";
 import { Badge, Button, Card, ErrorText, TextInput } from "@/components/ui";
-import type { HolderRecord, TokenRecord } from "@/types";
+import type { HolderRecord, TokenRecord, TokenRequestRecord } from "@/types";
 
 const OPERATOR_HINT = "the token's treasury account";
 
-export default function HolderPanel({ token, holders }: { token: TokenRecord; holders: HolderRecord[] }) {
+export default function HolderPanel({
+  token,
+  holders,
+  requests,
+}: {
+  token: TokenRecord;
+  holders: HolderRecord[];
+  requests: TokenRequestRecord[];
+}) {
   const { accountId, connect, connecting } = useWallet();
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [allowanceAmount, setAllowanceAmount] = useState(token.maxSupply ? Number(token.maxSupply) : 1_000_000_000);
 
   const holder = useMemo(() => holders.find((h) => h.accountId === accountId) ?? null, [holders, accountId]);
+  const tokenRequest = useMemo(
+    () => requests.find((request) => request.accountId === accountId) ?? null,
+    [requests, accountId]
+  );
+
+  useEffect(() => {
+    if (
+      !tokenRequest ||
+      tokenRequest.triggerStatus !== "TRIGGERED" ||
+      tokenRequest.processingError ||
+      !["PENDING", "PROCESSING"].includes(tokenRequest.status)
+    ) {
+      return;
+    }
+    const interval = window.setInterval(() => router.refresh(), 3_000);
+    return () => window.clearInterval(interval);
+  }, [router, tokenRequest]);
 
   async function run(key: string, fn: () => Promise<unknown>) {
     setBusy(key);
     setError(null);
+    setNotice(null);
     try {
       await fn();
       router.refresh();
@@ -72,6 +99,31 @@ export default function HolderPanel({ token, holders }: { token: TokenRecord; ho
               <AssociateButton tokenId={token.id} accountId={accountId} onDone={() => router.refresh()} onError={setError} />
             }
           />
+          {token.tokenType === "FUNGIBLE" && (
+            <ChecklistRow
+              label={`Request 1 ${token.symbol}`}
+              done={tokenRequest?.status === "FULFILLED"}
+              extra={<TokenRequestSummary request={tokenRequest} />}
+              action={
+                <TokenRequestAction
+                  request={tokenRequest}
+                  disabled={!holder.associated || token.paused}
+                  busy={busy === "token-request"}
+                  onRequest={() =>
+                    run("token-request", async () => {
+                      const result = await postJson<{
+                        triggered: boolean;
+                        warning?: string;
+                      }>(`/api/tokens/${token.id}/requests`, { accountId });
+                      if (!result.triggered && result.warning) {
+                        setNotice(`Request saved. Hermes could not start yet: ${result.warning}`);
+                      }
+                    })
+                  }
+                />
+              }
+            />
+          )}
           {token.compliance.worldIdRequired && (
             <ChecklistRow
               label="Verify with World ID (stubbed)"
@@ -134,8 +186,98 @@ export default function HolderPanel({ token, holders }: { token: TokenRecord; ho
       )}
 
       <ErrorText>{error}</ErrorText>
+      {notice && <p className="text-sm text-amber-700 dark:text-amber-300">{notice}</p>}
     </Card>
   );
+}
+
+function TokenRequestAction({
+  request,
+  disabled,
+  busy,
+  onRequest,
+}: {
+  request: TokenRequestRecord | null;
+  disabled: boolean;
+  busy: boolean;
+  onRequest: () => void;
+}) {
+  if (request?.status === "FULFILLED") {
+    return request.fulfillmentHashscanUrl ? (
+      <a
+        href={request.fulfillmentHashscanUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-300"
+      >
+        View transfer ↗
+      </a>
+    ) : (
+      <Badge tone="emerald">Sent</Badge>
+    );
+  }
+  if (request?.status === "REJECTED") {
+    return (
+      <Button variant="secondary" disabled={disabled || busy} onClick={onRequest}>
+        {busy ? "Requesting…" : "Request again"}
+      </Button>
+    );
+  }
+  if (request?.status === "PROCESSING") {
+    return request.processingError ? (
+      <Badge tone="red">Review needed</Badge>
+    ) : (
+      <Badge tone="violet">Hermes sending</Badge>
+    );
+  }
+  if (request?.status === "PENDING" && request.triggerStatus === "TRIGGERED") {
+    return (
+      <Button variant="secondary" disabled={disabled || busy} onClick={onRequest}>
+        {busy ? "Triggering…" : "Retry Hermes"}
+      </Button>
+    );
+  }
+
+  return (
+    <Button disabled={disabled || busy} onClick={onRequest}>
+      {busy ? "Requesting…" : request?.triggerStatus === "FAILED" ? "Retry Hermes" : "Request"}
+    </Button>
+  );
+}
+
+function TokenRequestSummary({ request }: { request: TokenRequestRecord | null }) {
+  if (!request) return <span className="text-xs text-zinc-500">Hermes reviews and sends from treasury.</span>;
+  if (request.status === "FULFILLED") {
+    return <span className="text-xs text-emerald-700 dark:text-emerald-300">1 token sent.</span>;
+  }
+  if (request.status === "REJECTED") {
+    return (
+      <span className="text-xs text-red-600 dark:text-red-400">
+        {request.rejectionReason ?? "Hermes rejected this request."}
+      </span>
+    );
+  }
+  if (request.status === "PROCESSING") {
+    if (request.processingError) {
+      return (
+        <span className="text-xs text-red-600 dark:text-red-400">
+          Transfer result is uncertain; operator review required.
+        </span>
+      );
+    }
+    return <span className="text-xs text-violet-600 dark:text-violet-300">Transfer in progress…</span>;
+  }
+  if (request.processingError) {
+    return (
+      <span className="text-xs text-amber-700 dark:text-amber-300">
+        Last on-chain attempt failed safely; retry Hermes.
+      </span>
+    );
+  }
+  if (request.triggerStatus === "FAILED") {
+    return <span className="text-xs text-amber-700 dark:text-amber-300">Saved; Hermes needs a retry.</span>;
+  }
+  return <span className="text-xs text-zinc-500">Hermes is reviewing the request…</span>;
 }
 
 function ChecklistRow({

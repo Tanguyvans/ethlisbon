@@ -1449,6 +1449,7 @@ function app() {
     // Only providers hermes can route to via a plain API key (all present in
     // the server's HERMES_PROVIDER_IDS map, so model pinning works on save).
     providerMap: {
+      'OpenAI API':         { key: 'OPENAI_API_KEY',      modelKey: '_MODEL_OPENAI_API_KEY',      placeholder: 'sk-...',     modelPlaceholder: 'e.g. gpt-4.1-mini' },
       'OpenRouter':         { key: 'OPENROUTER_API_KEY', modelKey: '_MODEL_OPENROUTER_API_KEY', placeholder: 'sk-or-...',  modelPlaceholder: 'e.g. openai/gpt-4o-mini' },
       'Anthropic (Claude)': { key: 'ANTHROPIC_API_KEY',  modelKey: '_MODEL_ANTHROPIC_API_KEY',  placeholder: 'sk-ant-...', modelPlaceholder: 'e.g. claude-sonnet-4-5' },
       'Google AI Studio':   { key: 'GEMINI_API_KEY',     modelKey: '_MODEL_GEMINI_API_KEY',     placeholder: 'AIza...',    modelPlaceholder: 'e.g. gemini-2.5-flash' },

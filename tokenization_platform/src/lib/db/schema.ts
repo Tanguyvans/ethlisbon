@@ -79,6 +79,28 @@ CREATE TABLE IF NOT EXISTS events (
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- A holder can make one durable request per token. The amount is fixed server-side when
+-- the request is created; Hermes never gets to choose it. Keeping the request in SQLite
+-- before invoking Hermes makes webhook outages recoverable and prevents double sends.
+CREATE TABLE IF NOT EXISTS token_requests (
+  id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+  token_id                 TEXT NOT NULL REFERENCES tokens(id) ON DELETE CASCADE,
+  account_id               TEXT NOT NULL,
+  amount_base_units        TEXT NOT NULL,
+  status                   TEXT NOT NULL DEFAULT 'PENDING',
+  trigger_status           TEXT NOT NULL DEFAULT 'NOT_TRIGGERED',
+  trigger_error            TEXT,
+  processing_error         TEXT,
+  rejection_reason         TEXT,
+  fulfillment_tx_id        TEXT,
+  fulfillment_hashscan_url TEXT,
+  created_at               TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (token_id, account_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_holders_token ON holders(token_id);
 CREATE INDEX IF NOT EXISTS idx_events_token ON events(token_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_token_requests_status ON token_requests(status, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_token_requests_token ON token_requests(token_id, created_at DESC);
 `;

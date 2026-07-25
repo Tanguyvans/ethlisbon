@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getToken, listEvents, listHolders } from "@/lib/db/repo";
+import { getToken, listEvents, listHolders, listTokenRequestsForToken } from "@/lib/db/repo";
 import TokenWorkspace from "@/components/TokenWorkspace";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +11,7 @@ export default async function TokenDetailPage({ params }: { params: Promise<{ to
 
   const holders = listHolders(tokenId);
   const events = listEvents(tokenId);
+  const requests = listTokenRequestsForToken(tokenId);
 
-  return <TokenWorkspace token={token} holders={holders} events={events} />;
+  return <TokenWorkspace token={token} holders={holders} events={events} requests={requests} />;
 }
