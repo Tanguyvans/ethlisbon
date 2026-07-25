@@ -5,11 +5,14 @@
   "scripts": {
     "codegen": "graph codegen",
     "build": "graph build",
-    "auth": "graph auth --studio",
-    "deploy": "graph deploy --studio graph-experiments-sepolia-erc20"
+    "add-source": "node scripts/add-source.mjs",
+    "deploy": "node --env-file=.env scripts/deploy.mjs"
   },
   "dependencies": {
     "@graphprotocol/graph-cli": "^0.97.1",
     "@graphprotocol/graph-ts": "^0.38.1"
+  },
+  "devDependencies": {
+    "js-yaml": "^4.1.0"
   }
 }

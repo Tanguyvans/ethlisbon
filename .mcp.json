@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "graph-experiments": {
+      "command": "npm",
+      "args": ["--prefix", "graph_experiments/mcp-server", "start"]
+    }
+  }
+}

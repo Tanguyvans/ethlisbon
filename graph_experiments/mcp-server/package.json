@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx src/index.ts"
+    "start": "node --env-file=.env --import tsx src/index.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",

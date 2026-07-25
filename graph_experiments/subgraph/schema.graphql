@@ -7,7 +7,9 @@ type Token @entity(immutable: false) {
 }
 
 type Account @entity(immutable: false) {
-  id: ID! # account address
+  id: ID! # `${tokenAddress}-${accountAddress}` -- balances are per-token, not global
+  token: Token!
+  address: Bytes!
   balance: BigInt!
   sentCount: BigInt!
   receivedCount: BigInt!
@@ -15,6 +17,7 @@ type Account @entity(immutable: false) {
 
 type Transfer @entity(immutable: true) {
   id: ID! # txHash-logIndex
+  token: Token!
   from: Account!
   to: Account!
   value: BigInt!

@@ -22,14 +22,15 @@ Requires a free [Graph Studio](https://thegraph.com/studio/) account.
 cd subgraph
 npm install
 npx graph auth --studio <YOUR_DEPLOY_KEY>   # from Studio: create a subgraph first, grab its deploy key
+# (`graph auth --studio` still works fine even though `deploy --studio` doesn't on this CLI version)
 npm run codegen
 npm run build
-npm run deploy   # deploys to the subgraph name "graph-experiments-sepolia-erc20" — rename in package.json if you used a different name in Studio
+npm run deploy   # deploys to the subgraph name "sepolia-test" — rename in package.json if you used a different name in Studio
 ```
 
 Wait for the Studio dashboard to show the subgraph fully synced, then copy its **Query URL**
 from the "Details" tab (looks like
-`https://api.studio.thegraph.com/query/<id>/graph-experiments-sepolia-erc20/<version>`).
+`https://api.studio.thegraph.com/query/<id>/sepolia-test/<version>`).
 Queries against Studio's own endpoint are free — no GRT/billing needed for this experiment.
 
 ## 2. Run the MCP server

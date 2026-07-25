@@ -23,10 +23,13 @@ function getOrCreateToken(address: Address): Token {
   return token as Token;
 }
 
-function getOrCreateAccount(address: Address): Account {
-  let account = Account.load(address.toHexString());
+function getOrCreateAccount(tokenAddress: Address, accountAddress: Address): Account {
+  let id = tokenAddress.toHexString() + "-" + accountAddress.toHexString();
+  let account = Account.load(id);
   if (account == null) {
-    account = new Account(address.toHexString());
+    account = new Account(id);
+    account.token = tokenAddress.toHexString();
+    account.address = accountAddress;
     account.balance = BigInt.fromI32(0);
     account.sentCount = BigInt.fromI32(0);
     account.receivedCount = BigInt.fromI32(0);
@@ -35,13 +38,15 @@ function getOrCreateAccount(address: Address): Account {
   return account as Account;
 }
 
+// Shared by every dataSource in subgraph.yaml -- event.address tells us which
+// contract fired, so the same handler works for any number of tracked tokens.
 export function handleTransfer(event: TransferEvent): void {
   let token = getOrCreateToken(event.address);
   token.transferCount = token.transferCount.plus(BigInt.fromI32(1));
   token.save();
 
-  let from = getOrCreateAccount(event.params.from);
-  let to = getOrCreateAccount(event.params.to);
+  let from = getOrCreateAccount(event.address, event.params.from);
+  let to = getOrCreateAccount(event.address, event.params.to);
 
   let isMint = event.params.from.equals(Address.zero());
   let isBurn = event.params.to.equals(Address.zero());
@@ -60,6 +65,7 @@ export function handleTransfer(event: TransferEvent): void {
   let transfer = new Transfer(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString()
   );
+  transfer.token = token.id;
   transfer.from = from.id;
   transfer.to = to.id;
   transfer.value = event.params.value;
