@@ -544,6 +544,23 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
 
     merged["data_dir"] = HERMES_HOME
 
+    # Seed the Hedera tokenization MCP server so the agent gets deploy_token,
+    # whitelist_holder, distribute, etc. as native tools without any manual
+    # `hermes mcp add` step. mcp_servers is otherwise operator/hermes-managed
+    # (see the docstring above) — setdefault() only fills in our "hedera" key
+    # if it's missing, so this never clobbers an operator's own edit (e.g.
+    # disabling it, or a different command) and coexists with any other MCP
+    # servers they've added via the dashboard.
+    mcp_servers = merged.get("mcp_servers")
+    if not isinstance(mcp_servers, dict):
+        mcp_servers = {}
+    mcp_servers.setdefault("hedera", {
+        "command": "python",
+        "args": ["/app/hedera_mcp.py"],
+        "env": {"TOKENIZATION_BASE_URL": TOKENIZATION_URL},
+    })
+    merged["mcp_servers"] = mcp_servers
+
     # Custom OpenAI-compatible endpoint — write custom_providers block when configured,
     # remove it when not (safe on Railway where users don't hand-edit config.yaml).
     custom_base_url = data.get("CUSTOM_PROVIDER_BASE_URL", "").strip()

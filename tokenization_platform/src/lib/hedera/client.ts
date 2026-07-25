@@ -26,7 +26,11 @@ function init(): void {
   }
 
   const operatorId = AccountId.fromString(idStr);
-  const operatorKey = PrivateKey.fromString(keyStr);
+  // PrivateKey.fromString() silently assumes ED25519 for non-DER raw hex,
+  // which is wrong for EVM-alias accounts (evm_address/MetaMask-style keys),
+  // whose keys are ECDSA secp256k1 — that mismatch produces an INVALID_SIGNATURE
+  // precheck failure that looks unrelated to key parsing.
+  const operatorKey = PrivateKey.isDerKey(keyStr) ? PrivateKey.fromStringDer(keyStr) : PrivateKey.fromStringECDSA(keyStr);
 
   const net = network();
   const client =

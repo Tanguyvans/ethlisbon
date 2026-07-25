@@ -104,6 +104,7 @@ RUN uv pip install --system --no-cache -r /app/requirements.txt
 RUN mkdir -p /data/.hermes /data/tokenization
 
 COPY hermes-agent-template/server.py /app/server.py
+COPY hermes-agent-template/hedera_mcp.py /app/hedera_mcp.py
 COPY hermes-agent-template/templates/ /app/templates/
 COPY hermes-agent-template/start.sh /app/start.sh
 # Default agent identity (AGENTS.md, etc.) — start.sh seeds these onto the

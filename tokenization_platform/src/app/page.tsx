@@ -1,25 +1,19 @@
-import RwaMarketplace from "@/components/RwaMarketplace";
-import { RWA_TOKENS } from "@/lib/rwaCatalog";
+import { redirect } from "next/navigation";
+import { listTokens } from "@/lib/db/repo";
+import { Card } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
 export default function DashboardPage() {
-  const appId = process.env.NEXT_PUBLIC_WORLD_APP_ID ?? "";
-  const isConfigured = Boolean(
-    appId && process.env.WORLD_RP_ID && process.env.WORLD_RP_SIGNING_KEY,
-  );
+  const [token] = listTokens();
+  if (token) redirect(`/tokens/${token.id}`);
 
   return (
-    <RwaMarketplace
-      tokens={RWA_TOKENS}
-      worldConfig={{
-        appId,
-        isConfigured,
-        selfieEnvironment: "production",
-        identityEnvironment: "staging",
-        selfieSignal:
-          process.env.NEXT_PUBLIC_WORLD_SIGNAL ?? "rwa-marketplace-holder",
-      }}
-    />
+    <Card className="text-center py-16">
+      <h1 className="text-xl font-semibold">No token deployed yet</h1>
+      <p className="mt-2 text-sm text-zinc-500">
+        Once the operator deploys this deployment&apos;s token, it will appear here.
+      </p>
+    </Card>
   );
 }
