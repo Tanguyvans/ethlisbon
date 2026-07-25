@@ -1,0 +1,91 @@
+import { z } from "zod";
+
+const assetCategorySchema = z.enum([
+  "securities",
+  "real-estate",
+  "invoices",
+  "carbon-credits",
+  "commodities",
+  "other",
+]);
+
+const customFeeSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("FIXED_HBAR"), amountHbar: z.number().positive() }),
+  z.object({
+    type: z.literal("FRACTIONAL"),
+    numerator: z.number().int().positive(),
+    denominator: z.number().int().positive(),
+    minAmount: z.number().nonnegative(),
+    maxAmount: z.number().positive(),
+    assessedToSender: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("ROYALTY"),
+    numerator: z.number().int().positive(),
+    denominator: z.number().int().positive(),
+    fallbackFeeHbar: z.number().nonnegative(),
+  }),
+]);
+
+export const complianceSchema = z
+  .object({
+    kycRequired: z.boolean(),
+    freezeDefault: z.boolean(),
+    wipeEnabled: z.boolean(),
+    pauseEnabled: z.boolean(),
+    worldIdRequired: z.boolean(),
+    livenessEnabled: z.boolean(),
+    livenessPeriodSeconds: z.number().int().positive().optional(),
+  })
+  .refine((c) => !c.livenessEnabled || !!c.livenessPeriodSeconds, {
+    message: "livenessPeriodSeconds is required when livenessEnabled is true",
+    path: ["livenessPeriodSeconds"],
+  })
+  .refine((c) => !c.worldIdRequired || c.kycRequired || c.freezeDefault, {
+    message:
+      "World ID verification needs a whitelisting mechanism to gate — enable KYC and/or freeze-by-default too",
+    path: ["worldIdRequired"],
+  });
+
+export const createTokenSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+    symbol: z.string().trim().min(1).max(20),
+    tokenType: z.enum(["FUNGIBLE", "NFT"]),
+    decimals: z.number().int().min(0).max(18),
+    initialSupply: z.number().int().min(0),
+    supplyType: z.enum(["FINITE", "INFINITE"]),
+    maxSupply: z.number().int().positive().optional(),
+    assetCategory: assetCategorySchema,
+    memo: z.string().trim().max(100).optional(),
+    compliance: complianceSchema,
+    customFee: customFeeSchema.optional(),
+  })
+  .refine((v) => v.supplyType === "INFINITE" || !!v.maxSupply, {
+    message: "maxSupply is required for a finite supply token",
+    path: ["maxSupply"],
+  })
+  .refine((v) => v.tokenType === "NFT" || v.initialSupply >= 0, { message: "invalid initialSupply" });
+
+export const accountIdSchema = z
+  .string()
+  .trim()
+  .regex(/^\d+\.\d+\.\d+$/, "must be a Hedera account id like 0.0.1234");
+
+export const registerHolderSchema = z.object({
+  accountId: accountIdSchema,
+  evmAddress: z.string().trim().optional(),
+});
+
+export const txReceiptSchema = z.object({
+  txId: z.string().trim().min(1),
+});
+
+export const transferSchema = z.object({
+  accountId: accountIdSchema,
+  amount: z.number().positive(),
+});
+
+export const pauseSchema = z.object({
+  paused: z.boolean(),
+});

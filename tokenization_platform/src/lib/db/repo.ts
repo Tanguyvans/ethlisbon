@@ -1,0 +1,357 @@
+import { getDb } from "./index";
+import type {
+  ComplianceOptions,
+  CustomFeeConfig,
+  EventRecord,
+  EventType,
+  HolderRecord,
+  HolderStatus,
+  TokenRecord,
+  TokenType,
+  SupplyType,
+  AssetCategory,
+} from "@/types";
+import { hashscanTokenUrl } from "@/lib/hedera/format";
+
+// --- raw row shapes (sqlite gives us 0/1 for booleans and TEXT for everything else) ---
+
+interface TokenRow {
+  id: string;
+  name: string;
+  symbol: string;
+  token_type: string;
+  decimals: number;
+  initial_supply: string;
+  supply_type: string;
+  max_supply: string | null;
+  treasury_account_id: string;
+  asset_category: string | null;
+  memo: string | null;
+  kyc_required: number;
+  freeze_default: number;
+  wipe_enabled: number;
+  pause_enabled: number;
+  world_id_required: number;
+  liveness_enabled: number;
+  liveness_period_seconds: number | null;
+  custom_fee_enabled: number;
+  custom_fee_config: string | null;
+  has_admin_key: number;
+  has_kyc_key: number;
+  has_freeze_key: number;
+  has_wipe_key: number;
+  has_pause_key: number;
+  has_supply_key: number;
+  has_fee_schedule_key: number;
+  paused: number;
+  create_tx_id: string | null;
+  created_at: string;
+}
+
+interface HolderRow {
+  token_id: string;
+  account_id: string;
+  evm_address: string | null;
+  associated: number;
+  kyc_granted: number;
+  frozen: number;
+  allowance_granted: number;
+  world_id_verified_at: string | null;
+  last_checkin_at: string | null;
+  active_schedule_id: string | null;
+  active_schedule_expires_at: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface EventRow {
+  id: number;
+  token_id: string;
+  account_id: string | null;
+  type: string;
+  detail: string | null;
+  tx_id: string | null;
+  hashscan_url: string | null;
+  created_at: string;
+}
+
+function mapToken(row: TokenRow): TokenRecord {
+  const compliance: ComplianceOptions = {
+    kycRequired: !!row.kyc_required,
+    freezeDefault: !!row.freeze_default,
+    wipeEnabled: !!row.wipe_enabled,
+    pauseEnabled: !!row.pause_enabled,
+    worldIdRequired: !!row.world_id_required,
+    livenessEnabled: !!row.liveness_enabled,
+    livenessPeriodSeconds: row.liveness_period_seconds ?? undefined,
+  };
+  return {
+    id: row.id,
+    name: row.name,
+    symbol: row.symbol,
+    tokenType: row.token_type as TokenType,
+    decimals: row.decimals,
+    initialSupply: row.initial_supply,
+    supplyType: row.supply_type as SupplyType,
+    maxSupply: row.max_supply,
+    treasuryAccountId: row.treasury_account_id,
+    assetCategory: (row.asset_category as AssetCategory) ?? null,
+    memo: row.memo,
+    compliance,
+    customFee: row.custom_fee_enabled && row.custom_fee_config
+      ? (JSON.parse(row.custom_fee_config) as CustomFeeConfig)
+      : null,
+    keys: {
+      admin: !!row.has_admin_key,
+      kyc: !!row.has_kyc_key,
+      freeze: !!row.has_freeze_key,
+      wipe: !!row.has_wipe_key,
+      pause: !!row.has_pause_key,
+      supply: !!row.has_supply_key,
+      feeSchedule: !!row.has_fee_schedule_key,
+    },
+    paused: !!row.paused,
+    createTxId: row.create_tx_id,
+    hashscanUrl: hashscanTokenUrl(row.id),
+    createdAt: row.created_at,
+  };
+}
+
+function livenessState(
+  compliance: ComplianceOptions,
+  lastCheckinAt: string | null,
+  createdAt: string
+): HolderRecord["livenessState"] {
+  if (!compliance.livenessEnabled || !compliance.livenessPeriodSeconds) return "DISABLED";
+  const anchor = lastCheckinAt ?? createdAt;
+  const elapsedMs = Date.now() - new Date(anchor).getTime();
+  const periodMs = compliance.livenessPeriodSeconds * 1000;
+  if (elapsedMs >= periodMs) return "EXPIRED";
+  if (elapsedMs >= periodMs * 0.5) return "AT_RISK";
+  return "OK";
+}
+
+function mapHolder(row: HolderRow, compliance: ComplianceOptions): HolderRecord {
+  return {
+    tokenId: row.token_id,
+    accountId: row.account_id,
+    evmAddress: row.evm_address,
+    associated: !!row.associated,
+    kycGranted: !!row.kyc_granted,
+    frozen: !!row.frozen,
+    allowanceGranted: !!row.allowance_granted,
+    worldIdVerifiedAt: row.world_id_verified_at,
+    lastCheckinAt: row.last_checkin_at,
+    activeScheduleId: row.active_schedule_id,
+    activeScheduleExpiresAt: row.active_schedule_expires_at,
+    status: row.status as HolderStatus,
+    livenessState: livenessState(compliance, row.last_checkin_at, row.created_at),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapEvent(row: EventRow): EventRecord {
+  return {
+    id: row.id,
+    tokenId: row.token_id,
+    accountId: row.account_id,
+    type: row.type as EventType,
+    detail: row.detail ? (JSON.parse(row.detail) as Record<string, unknown>) : null,
+    txId: row.tx_id,
+    hashscanUrl: row.hashscan_url,
+    createdAt: row.created_at,
+  };
+}
+
+// --- tokens ---
+
+export interface InsertTokenParams {
+  id: string;
+  name: string;
+  symbol: string;
+  tokenType: TokenType;
+  decimals: number;
+  initialSupply: number;
+  supplyType: SupplyType;
+  maxSupply?: number;
+  treasuryAccountId: string;
+  assetCategory: AssetCategory;
+  memo?: string;
+  compliance: ComplianceOptions;
+  customFee: CustomFeeConfig | null;
+  keys: TokenRecord["keys"];
+  createTxId: string;
+}
+
+export function insertToken(params: InsertTokenParams): TokenRecord {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO tokens (
+      id, name, symbol, token_type, decimals, initial_supply, supply_type, max_supply,
+      treasury_account_id, asset_category, memo,
+      kyc_required, freeze_default, wipe_enabled, pause_enabled, world_id_required,
+      liveness_enabled, liveness_period_seconds,
+      custom_fee_enabled, custom_fee_config,
+      has_admin_key, has_kyc_key, has_freeze_key, has_wipe_key, has_pause_key, has_supply_key, has_fee_schedule_key,
+      create_tx_id
+    ) VALUES (
+      @id, @name, @symbol, @tokenType, @decimals, @initialSupply, @supplyType, @maxSupply,
+      @treasuryAccountId, @assetCategory, @memo,
+      @kycRequired, @freezeDefault, @wipeEnabled, @pauseEnabled, @worldIdRequired,
+      @livenessEnabled, @livenessPeriodSeconds,
+      @customFeeEnabled, @customFeeConfig,
+      @hasAdminKey, @hasKycKey, @hasFreezeKey, @hasWipeKey, @hasPauseKey, @hasSupplyKey, @hasFeeScheduleKey,
+      @createTxId
+    )`
+  ).run({
+    id: params.id,
+    name: params.name,
+    symbol: params.symbol,
+    tokenType: params.tokenType,
+    decimals: params.decimals,
+    initialSupply: String(params.initialSupply),
+    supplyType: params.supplyType,
+    maxSupply: params.maxSupply != null ? String(params.maxSupply) : null,
+    treasuryAccountId: params.treasuryAccountId,
+    assetCategory: params.assetCategory,
+    memo: params.memo ?? null,
+    kycRequired: params.compliance.kycRequired ? 1 : 0,
+    freezeDefault: params.compliance.freezeDefault ? 1 : 0,
+    wipeEnabled: params.compliance.wipeEnabled ? 1 : 0,
+    pauseEnabled: params.compliance.pauseEnabled ? 1 : 0,
+    worldIdRequired: params.compliance.worldIdRequired ? 1 : 0,
+    livenessEnabled: params.compliance.livenessEnabled ? 1 : 0,
+    livenessPeriodSeconds: params.compliance.livenessPeriodSeconds ?? null,
+    customFeeEnabled: params.customFee ? 1 : 0,
+    customFeeConfig: params.customFee ? JSON.stringify(params.customFee) : null,
+    hasAdminKey: params.keys.admin ? 1 : 0,
+    hasKycKey: params.keys.kyc ? 1 : 0,
+    hasFreezeKey: params.keys.freeze ? 1 : 0,
+    hasWipeKey: params.keys.wipe ? 1 : 0,
+    hasPauseKey: params.keys.pause ? 1 : 0,
+    hasSupplyKey: params.keys.supply ? 1 : 0,
+    hasFeeScheduleKey: params.keys.feeSchedule ? 1 : 0,
+    createTxId: params.createTxId,
+  });
+  return getToken(params.id)!;
+}
+
+export function getToken(id: string): TokenRecord | null {
+  const row = getDb().prepare("SELECT * FROM tokens WHERE id = ?").get(id) as TokenRow | undefined;
+  return row ? mapToken(row) : null;
+}
+
+export function listTokens(): TokenRecord[] {
+  const rows = getDb().prepare("SELECT * FROM tokens ORDER BY created_at DESC").all() as TokenRow[];
+  return rows.map(mapToken);
+}
+
+export function setTokenPaused(tokenId: string, paused: boolean): void {
+  getDb().prepare("UPDATE tokens SET paused = ? WHERE id = ?").run(paused ? 1 : 0, tokenId);
+}
+
+// --- holders ---
+
+export function getHolder(tokenId: string, accountId: string): HolderRecord | null {
+  const token = getToken(tokenId);
+  if (!token) return null;
+  const row = getDb()
+    .prepare("SELECT * FROM holders WHERE token_id = ? AND account_id = ?")
+    .get(tokenId, accountId) as HolderRow | undefined;
+  return row ? mapHolder(row, token.compliance) : null;
+}
+
+export function listHolders(tokenId: string): HolderRecord[] {
+  const token = getToken(tokenId);
+  if (!token) return [];
+  const rows = getDb()
+    .prepare("SELECT * FROM holders WHERE token_id = ? ORDER BY created_at ASC")
+    .all(tokenId) as HolderRow[];
+  return rows.map((r) => mapHolder(r, token.compliance));
+}
+
+/** Insert a holder row if it doesn't exist yet; no-op otherwise. */
+export function ensureHolder(tokenId: string, accountId: string, evmAddress?: string | null): void {
+  getDb()
+    .prepare(
+      `INSERT INTO holders (token_id, account_id, evm_address)
+       VALUES (?, ?, ?)
+       ON CONFLICT(token_id, account_id) DO UPDATE SET
+         evm_address = COALESCE(excluded.evm_address, holders.evm_address)`
+    )
+    .run(tokenId, accountId, evmAddress ?? null);
+}
+
+export interface HolderPatch {
+  associated?: boolean;
+  kycGranted?: boolean;
+  frozen?: boolean;
+  allowanceGranted?: boolean;
+  worldIdVerifiedAt?: string | null;
+  lastCheckinAt?: string | null;
+  activeScheduleId?: string | null;
+  activeScheduleExpiresAt?: string | null;
+  status?: HolderStatus;
+}
+
+const PATCH_COLUMN: Record<keyof HolderPatch, string> = {
+  associated: "associated",
+  kycGranted: "kyc_granted",
+  frozen: "frozen",
+  allowanceGranted: "allowance_granted",
+  worldIdVerifiedAt: "world_id_verified_at",
+  lastCheckinAt: "last_checkin_at",
+  activeScheduleId: "active_schedule_id",
+  activeScheduleExpiresAt: "active_schedule_expires_at",
+  status: "status",
+};
+
+const BOOLEAN_KEYS = new Set<keyof HolderPatch>(["associated", "kycGranted", "frozen", "allowanceGranted"]);
+
+export function updateHolder(tokenId: string, accountId: string, patch: HolderPatch): void {
+  ensureHolder(tokenId, accountId);
+  const entries = Object.entries(patch) as [keyof HolderPatch, unknown][];
+  if (entries.length === 0) return;
+  const setClauses = entries.map(([key]) => `${PATCH_COLUMN[key]} = ?`);
+  const values = entries.map(([key, value]) =>
+    BOOLEAN_KEYS.has(key) ? (value ? 1 : 0) : (value as string | null)
+  );
+  setClauses.push("updated_at = datetime('now')");
+  getDb()
+    .prepare(`UPDATE holders SET ${setClauses.join(", ")} WHERE token_id = ? AND account_id = ?`)
+    .run(...values, tokenId, accountId);
+}
+
+// --- events (audit trail shown in the UI) ---
+
+export function insertEvent(params: {
+  tokenId: string;
+  accountId?: string | null;
+  type: EventType;
+  detail?: Record<string, unknown> | null;
+  txId?: string | null;
+  hashscanUrl?: string | null;
+}): void {
+  getDb()
+    .prepare(
+      `INSERT INTO events (token_id, account_id, type, detail, tx_id, hashscan_url)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      params.tokenId,
+      params.accountId ?? null,
+      params.type,
+      params.detail ? JSON.stringify(params.detail) : null,
+      params.txId ?? null,
+      params.hashscanUrl ?? null
+    );
+}
+
+export function listEvents(tokenId: string, limit = 100): EventRecord[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM events WHERE token_id = ? ORDER BY created_at DESC, id DESC LIMIT ?")
+    .all(tokenId, limit) as EventRow[];
+  return rows.map(mapEvent);
+}
