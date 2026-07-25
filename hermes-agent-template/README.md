@@ -18,7 +18,8 @@ Deploy [Hermes Agent](https://github.com/NousResearch/hermes-agent) on [Railway]
 - **Live Logs** — streaming gateway log viewer
 - **User Pairing** — approve or deny users who message your bot, revoke access anytime
 - **Hedera Tokenization UI** — open the integrated Next.js tokenization platform and connect a Hedera wallet from Hermes
-- **Cookie Auth** — one password-protected session across Hermes and tokenization
+- **Cookie Auth** — password-protected Hermes dashboard and setup
+- **Public Tokenization UI** — wallet users can open `/tokenization` without the Hermes admin login
 - **Reset Config** — one-click reset to start fresh
 - **Backup & Restore** — download a full snapshot (config, credentials, chat history, memories, skills) as a zip, and restore it — including into a fresh project — to clone a deployment. Not encrypted; a safety snapshot is taken automatically before every restore.
 
@@ -98,7 +99,7 @@ Railway Container
 │   ├── /            — Native Hermes dashboard (cookie auth)
 │   ├── /health      — Health check (no auth)
 │   ├── /setup/api/* — Config, status, logs, gateway, pairing
-│   ├── /tokenization/* — Authenticated proxy to the Next.js platform
+│   ├── /tokenization/* — Public proxy to the Next.js platform
 │   └── /*            — Authenticated proxy to the native Hermes dashboard
 ├── Next.js Tokenization Platform — private loopback subprocess on port 3000
 ├── Hermes dashboard — private loopback subprocess on port 9119
@@ -122,7 +123,9 @@ docker run --rm -it -p 8080:8080 \
   hermes-agent
 ```
 
-Open `http://localhost:8080`, log in with `admin` / `changeme`, then use the **Tokenization** control in the Hermes widget.
+Open `http://localhost:8080/tokenization` to use the public tokenization platform.
+The Hermes dashboard at `http://localhost:8080` remains protected with
+`admin` / `changeme`.
 
 For Railway, keep the service **Root Directory** set to `/`. The repository-level
 `railway.toml` selects `hermes-agent-template/Dockerfile`, whose build context

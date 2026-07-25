@@ -6,15 +6,17 @@ Responsibilities:
   - Management API at /setup/api/* (config, status, logs, gateway, pairing)
   - Reverse proxy at / and /* → native Hermes dashboard (hermes_cli/web_server, on 127.0.0.1:9119)
   - Managed subprocesses: `hermes gateway` (agent) and `hermes dashboard` (native UI)
-  - Cookie-based session auth at /login (HMAC-signed, 7-day expiry, httponly)
+  - Cookie-based session auth for Hermes at /login (HMAC-signed, 7-day expiry, httponly)
+  - Public Tokenization Platform reverse proxy at /tokenization
 
 Auth model: Basic Auth was dropped in favor of cookies because the Hermes React
 SPA's plain fetch() calls do not reliably include basic-auth creds across browsers,
 and basic-auth's per-directory protection space forced separate prompts for
-/setup and /. Cookies auto-include on every same-origin request, so both the
-setup UI and the proxied dashboard work with a single login. The cookie signing
-secret is regenerated on every process start, so any ADMIN_PASSWORD change on
-Railway (which triggers a redeploy) invalidates all existing sessions.
+/setup and /. Cookies auto-include on every same-origin request, so both Hermes
+surfaces work with a single login. The tokenization app is intentionally public.
+The cookie signing secret is regenerated on every process start, so any
+ADMIN_PASSWORD change on Railway (which triggers a redeploy) invalidates all
+existing sessions.
 
 First-visit behavior: if no provider+model config exists, GET / redirects to /setup.
 Once configured, / proxies to the Hermes dashboard. A small "← Setup" widget is
@@ -104,10 +106,9 @@ HERMES_DASHBOARD_HOST = "127.0.0.1"
 HERMES_DASHBOARD_PORT = int(os.environ.get("HERMES_DASHBOARD_PORT", "9119"))
 HERMES_DASHBOARD_URL = f"http://{HERMES_DASHBOARD_HOST}:{HERMES_DASHBOARD_PORT}"
 
-# Tokenization Platform — a standalone Next.js server reachable only through
-# this authenticated reverse proxy. Keeping it on loopback prevents callers
-# from bypassing Hermes auth and reaching the currently hackathon-scoped admin
-# API routes directly.
+# Tokenization Platform — a standalone Next.js server exposed publicly only
+# through the /tokenization reverse proxy. Keeping it on loopback prevents
+# callers from bypassing the gateway and reaching port 3000 directly.
 TOKENIZATION_HOST = "127.0.0.1"
 TOKENIZATION_PORT = int(os.environ.get("TOKENIZATION_PORT", "3000"))
 TOKENIZATION_URL = f"http://{TOKENIZATION_HOST}:{TOKENIZATION_PORT}"
@@ -2007,7 +2008,7 @@ async def _proxy_to_dashboard(request: Request) -> Response:
 
 
 async def _proxy_to_tokenization(request: Request) -> Response:
-    """Forward an authenticated request to the loopback-only Next.js server."""
+    """Forward a public request to the loopback-only Next.js server."""
     client = get_http_client()
     target = f"{TOKENIZATION_URL}{request.url.path}"
     if request.url.query:
@@ -2063,7 +2064,6 @@ async def _proxy_to_tokenization(request: Request) -> Response:
 
 
 async def route_tokenization(request: Request) -> Response:
-    if err := guard(request): return err
     return await _proxy_to_tokenization(request)
 
 
@@ -2314,7 +2314,7 @@ routes = [
     # /setup/* typos return a real 404 — not a silent proxy fallthrough.
     Route("/setup/{path:path}",                 route_setup_404,     methods=ANY_METHOD),
 
-    # Next.js tokenization UI + API, protected by the same Hermes session.
+    # Public Next.js tokenization UI + API. Hermes and /setup remain protected.
     Route("/tokenization",                      route_tokenization,  methods=ANY_METHOD),
     Route("/tokenization/{path:path}",          route_tokenization,  methods=ANY_METHOD),
 
