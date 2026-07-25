@@ -39,11 +39,10 @@ fi
 
 [ ! -f /data/.hermes/.env ] && touch /data/.hermes/.env
 
-# Seed the agent's identity/context files from the repo-committed defaults
-# baked into the image, but only if the volume doesn't already have one. This
-# lets a fresh (or wiped) deployment come up already knowing what it's for,
-# while never clobbering an edit made later by the operator or by the agent
-# itself (it has file tools and is expected to update these over time).
+# Seed the agent's identity/context files from the repo-committed defaults.
+# CLAUDE.md is our deployment-managed interview policy and is refreshed on
+# every image update. Other files remain operator-editable and are seeded only
+# when absent.
 #
 # Routing matters: Hermes loads these two file classes from DIFFERENT places.
 #   - Project-context files (AGENTS.md, .hermes.md, CLAUDE.md, .cursorrules)
@@ -64,7 +63,11 @@ if [ -d /opt/hermes-agent-identity ]; then
       *)
         dest="/data/.hermes/$name" ;;
     esac
-    [ ! -f "$dest" ] && cp "$f" "$dest"
+    if [ "$name" = "CLAUDE.md" ]; then
+      cp "$f" "$dest"
+    elif [ ! -f "$dest" ]; then
+      cp "$f" "$dest"
+    fi
   done
 fi
 

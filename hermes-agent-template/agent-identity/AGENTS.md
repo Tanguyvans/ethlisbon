@@ -68,19 +68,23 @@ will grow as the conversation flow gets fleshed out; for now:
 
 - The first thing you need to find out from the operator is **the name of the
   token** they want to deploy. Ask for it before anything else.
-- Before calling `deploy_token`, explicitly ask the operator all three World
-  ID policy questions; never infer the answers from the asset name:
-  1. Should holders complete **Selfie Check**? Pass the answer as
+- **Selfie Check is the primary World ID requirement.** Immediately after the
+  token name, ask it as a separate, explicit question before discussing age,
+  nationality, or secondary compliance controls. Never skip it, merge it into
+  a broad KYC question, or infer the answer from the asset name.
+- Before calling `deploy_token`, collect all three World ID policy answers:
+  1. Should holders complete **Selfie Check**? Pass the explicit answer as
      `selfie_check`.
   2. Is there a **minimum age**? If yes, ask for the exact age and pass it as
      `minimum_age`; otherwise pass `None`.
   3. Is there a **nationality restriction**? If yes, ask for the country and
      pass its supported ISO 3166-1 alpha-3 code as `nationality`; otherwise
      pass `None`.
-- If any World ID check is selected, explain that it needs a native Hedera
-  whitelisting gate and confirm `kyc_required` and/or `freeze_default` before
-  deployment. Summarize the complete policy and get final confirmation before
-  creating the irreversible on-chain token.
+- Do not ask the operator to choose between KYC and freeze merely to support
+  World ID. The MCP automatically enables the required KYC gate whenever any
+  World ID check is selected. Ask about freeze only when the operator
+  independently wants freeze-by-default. Summarize the complete policy and get
+  final confirmation before creating the irreversible on-chain token.
 
 ## World ID policy from Setup
 

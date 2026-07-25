@@ -185,7 +185,8 @@ def deploy_token(
             "carbon-credits", "commodities", "other".
         memo: Optional on-chain memo, max 100 chars.
         kyc_required: Set a KYC key; holders must be KYC-granted before
-            receiving tokens.
+            receiving tokens. Automatically enabled when any World ID check
+            is selected, so the operator does not need to choose an HTS gate.
         freeze_default: Set a freeze key with freeze-by-default; holders start
             frozen until explicitly unfrozen (via whitelist_holder).
         wipe_enabled: Set a wipe key, enabling reclaim_now to claw back tokens
@@ -214,11 +215,10 @@ def deploy_token(
             f"Unsupported World ID nationality code: {normalized_nationality}."
         )
     world_id_required = bool(selfie_check or minimum_age is not None or normalized_nationality)
-    if world_id_required and not (kyc_required or freeze_default):
-        raise TokenizationApiError(
-            "world_id_required needs a whitelisting mechanism to gate — enable "
-            "kyc_required and/or freeze_default too."
-        )
+    # World ID decisions need a native HTS gate. KYC is the deterministic default: the
+    # server grants it only after verification. Freeze remains a separate optional control.
+    if world_id_required:
+        kyc_required = True
     if liveness_enabled and not liveness_period_seconds:
         raise TokenizationApiError("liveness_period_seconds is required when liveness_enabled is true.")
 
