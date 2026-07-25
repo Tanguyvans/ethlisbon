@@ -5,6 +5,7 @@ import {
   getHolder,
 } from "@/lib/db/repo";
 import { worldIdHolderSignal } from "@/lib/worldid/policy";
+import { serializeWorldIdProof } from "@/lib/worldid/proof";
 import { expectedWorldAction } from "@/lib/worldid/verification";
 import type { WorldIdCheckKind } from "@/types";
 
@@ -50,8 +51,9 @@ export async function POST(
     }
 
     let proofJson: string;
+    let proofHash: string;
     try {
-      proofJson = JSON.stringify(result);
+      ({ proofJson, proofHash } = serializeWorldIdProof(result));
     } catch {
       throw new ApiError("The World ID proof could not be serialized.", 400);
     }
@@ -66,6 +68,7 @@ export async function POST(
       action: expectedWorldAction(check),
       expectedSignal: worldIdHolderSignal(tokenId, accountId),
       proofJson,
+      proofHash,
     });
 
     return NextResponse.json(

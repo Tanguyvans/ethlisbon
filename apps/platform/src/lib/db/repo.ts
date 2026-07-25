@@ -112,6 +112,7 @@ interface WorldIdVerificationRow {
   action: string;
   expected_signal: string;
   proof_json: string | null;
+  proof_hash: string | null;
   credential: string | null;
   nullifier_hash: string | null;
   error_code: string | null;
@@ -575,6 +576,7 @@ export function createWorldIdVerification(params: {
   action: string;
   expectedSignal: string;
   proofJson: string;
+  proofHash: string;
 }): WorldIdVerificationRecord {
   const db = getDb();
   expireWorldIdVerifications();
@@ -591,15 +593,16 @@ export function createWorldIdVerification(params: {
 
     return db.prepare(
       `INSERT INTO world_id_verifications (
-         token_id, account_id, check_kind, action, expected_signal, proof_json
-       ) VALUES (?, ?, ?, ?, ?, ?)`
+         token_id, account_id, check_kind, action, expected_signal, proof_json, proof_hash
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).run(
       params.tokenId,
       params.accountId,
       params.check,
       params.action,
       params.expectedSignal,
-      params.proofJson
+      params.proofJson,
+      params.proofHash
     ).lastInsertRowid;
   });
 
@@ -718,35 +721,80 @@ export function failWorldIdVerification(
   return getWorldIdVerification(id);
 }
 
-/** Save the trusted World result and erase the raw proof. Returns false for local replay. */
+export type WorldIdCompletionResult =
+  | { completed: true }
+  | { completed: false; code: string; message: string };
+
+/** Save the trusted World result and erase the raw proof.
+ *
+ * A World nullifier is stable for a person + RP + action. It is intentionally reusable by the
+ * same holder for another token and for a later liveness refresh on the same token. We only
+ * reject an exact proof payload replay, or the same World identity claiming the same token from
+ * another Hedera account. */
 export function completeWorldIdVerification(
   id: number,
   credential: string,
   nullifierHash: string,
   verifiedAt: string
-): boolean {
+): WorldIdCompletionResult {
   const db = getDb();
-  return db.transaction(() => {
+  return db.transaction((): WorldIdCompletionResult => {
     const current = db
-      .prepare("SELECT action FROM world_id_verifications WHERE id = ?")
-      .get(id) as { action: string } | undefined;
-    if (!current) return false;
-
-    const replay = db
       .prepare(
-        `SELECT id FROM world_id_verifications
-         WHERE action = ? AND nullifier_hash = ? AND id != ? LIMIT 1`
+        `SELECT token_id, account_id, check_kind, action, proof_hash
+         FROM world_id_verifications WHERE id = ?`
       )
-      .get(current.action, nullifierHash, id) as { id: number } | undefined;
-    if (replay) {
+      .get(id) as {
+        token_id: string;
+        account_id: string;
+        check_kind: string;
+        action: string;
+        proof_hash: string | null;
+      } | undefined;
+    if (!current) {
+      return { completed: false, code: "verification_missing", message: "Verification not found." };
+    }
+
+    const reject = (code: string, message: string): WorldIdCompletionResult => {
       db.prepare(
         `UPDATE world_id_verifications
-         SET status = 'REJECTED', proof_json = NULL, error_code = 'nullifier_replayed',
-             error_detail = 'This World ID proof was already used for this action.',
+         SET status = 'REJECTED', proof_json = NULL, error_code = ?, error_detail = ?,
              updated_at = datetime('now')
          WHERE id = ?`
-      ).run(id);
-      return false;
+      ).run(code, message, id);
+      return { completed: false, code, message };
+    };
+
+    if (current.proof_hash) {
+      const proofReplay = db
+        .prepare(
+          `SELECT id FROM world_id_verifications
+           WHERE proof_hash = ? AND id != ? AND status IN ('VERIFIED', 'REJECTED') LIMIT 1`
+        )
+        .get(current.proof_hash, id) as { id: number } | undefined;
+      if (proofReplay) {
+        return reject("proof_replayed", "This exact World ID proof was already submitted.");
+      }
+    }
+
+    const identityClaim = db
+      .prepare(
+        `SELECT id FROM world_id_verifications
+         WHERE token_id = ? AND check_kind = ? AND action = ? AND nullifier_hash = ?
+           AND account_id != ? AND status = 'VERIFIED' LIMIT 1`
+      )
+      .get(
+        current.token_id,
+        current.check_kind,
+        current.action,
+        nullifierHash,
+        current.account_id
+      ) as { id: number } | undefined;
+    if (identityClaim) {
+      return reject(
+        "identity_already_claimed",
+        "This World ID is already linked to another wallet for this token."
+      );
     }
 
     const result = db.prepare(
@@ -756,7 +804,13 @@ export function completeWorldIdVerification(
            updated_at = datetime('now')
        WHERE id = ? AND status = 'PROCESSING'`
     ).run(credential, nullifierHash, verifiedAt, id);
-    return result.changes === 1;
+    return result.changes === 1
+      ? { completed: true }
+      : {
+          completed: false,
+          code: "verification_not_processing",
+          message: "This World ID verification is no longer processing.",
+        };
   })();
 }
 

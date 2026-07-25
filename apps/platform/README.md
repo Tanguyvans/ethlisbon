@@ -115,6 +115,16 @@ separate `worldid` MCP:
 - A holder is marked verified only after that World response succeeds. Selfie
   and Identity timestamps remain separate so one credential cannot satisfy the
   other policy. Abandoned raw proofs expire after 30 minutes.
+- The platform scopes nullifier use to the token and holder policy: the same
+  person may qualify for several tokens, while one World identity cannot claim
+  the same token through two Hedera accounts. A fresh proof from the same
+  holder is allowed to refresh a future liveness timestamp; an exact proof
+  payload replay remains rejected.
+
+Recurring Selfie Check will use a fresh per-check challenge or a World ID 4
+session. The current schema already permits repeated verified checks for the
+same token and holder, but the holder UI does not schedule those periodic
+checks yet.
 
 Configure `NEXT_PUBLIC_WORLD_APP_ID`, `WORLD_RP_ID`,
 `WORLD_RP_SIGNING_KEY`, `WORLD_ACTION`, and `WORLD_IDENTITY_ACTION` as

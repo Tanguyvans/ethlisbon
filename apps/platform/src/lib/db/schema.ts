@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS world_id_verifications (
   action            TEXT NOT NULL,
   expected_signal   TEXT NOT NULL,
   proof_json        TEXT,
+  proof_hash        TEXT,
   credential        TEXT,
   nullifier_hash    TEXT,
   error_code        TEXT,
@@ -136,7 +137,4 @@ CREATE INDEX IF NOT EXISTS idx_world_id_verifications_status
   ON world_id_verifications(status, created_at ASC);
 CREATE INDEX IF NOT EXISTS idx_world_id_verifications_holder
   ON world_id_verifications(token_id, account_id, check_kind, id DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_world_id_verifications_nullifier
-  ON world_id_verifications(action, nullifier_hash)
-  WHERE nullifier_hash IS NOT NULL;
 `;

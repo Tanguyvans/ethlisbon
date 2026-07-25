@@ -107,14 +107,14 @@ export async function executeWorldIdVerification(
     const nullifierHash = createHash("sha256")
       .update(result.nullifier.toLowerCase())
       .digest("hex");
-    const completed = completeWorldIdVerification(
+    const completion = completeWorldIdVerification(
       id,
       result.credential,
       nullifierHash,
       verifiedAt
     );
-    if (!completed) {
-      throw new ApiError("This World ID proof was already used for this action.", 409);
+    if (!completion.completed) {
+      throw new ApiError(completion.message, 409);
     }
 
     const verification = getWorldIdVerification(id)!;

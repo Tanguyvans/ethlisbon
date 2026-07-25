@@ -1,7 +1,9 @@
 import Database from "better-sqlite3";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { SCHEMA_SQL } from "./schema";
+import { serializeWorldIdProof } from "../worldid/proof";
 
 // better-sqlite3 is synchronous and file-backed, which is perfect for a single-process
 // Next.js server holding one Hedera operator/treasury account. Not meant to scale past a
@@ -30,7 +32,9 @@ function openDb(): Database.Database {
   return db;
 }
 
-/** Keep the proof retention deadline present if a database was created by an earlier build. */
+/** Keep the proof queue compatible with existing Railway volumes. Nullifiers identify a person
+ * for an RP action, so they must not be globally unique across every token. The proof digest is
+ * retained instead to reject an exact payload replay while allowing a fresh check later. */
 function migrateWorldIdVerificationQueue(db: Database.Database): void {
   const table = db
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'world_id_verifications'")
@@ -44,10 +48,46 @@ function migrateWorldIdVerificationQueue(db: Database.Database): void {
   if (!columns.has("expires_at")) {
     db.exec("ALTER TABLE world_id_verifications ADD COLUMN expires_at TEXT");
   }
+  if (!columns.has("proof_hash")) {
+    db.exec("ALTER TABLE world_id_verifications ADD COLUMN proof_hash TEXT");
+  }
+
+  const unhashedProofs = db
+    .prepare(
+      `SELECT id, proof_json FROM world_id_verifications
+       WHERE proof_json IS NOT NULL AND proof_hash IS NULL`
+    )
+    .all() as Array<{ id: number; proof_json: string }>;
+  const saveProofHash = db.prepare(
+    "UPDATE world_id_verifications SET proof_hash = ? WHERE id = ?"
+  );
+  db.transaction(() => {
+    for (const proof of unhashedProofs) {
+      let proofHash: string;
+      try {
+        proofHash = serializeWorldIdProof(JSON.parse(proof.proof_json)).proofHash;
+      } catch {
+        // A malformed legacy row must not prevent the application from starting. World will
+        // reject it later, while its raw digest still prevents byte-for-byte resubmission.
+        proofHash = createHash("sha256").update(proof.proof_json).digest("hex");
+      }
+      saveProofHash.run(proofHash, proof.id);
+    }
+  })();
+
   db.exec(`
     UPDATE world_id_verifications
     SET expires_at = datetime(created_at, '+30 minutes')
-    WHERE expires_at IS NULL
+    WHERE expires_at IS NULL;
+
+    -- The old index incorrectly treated one person verifying two different tokens as a replay.
+    DROP INDEX IF EXISTS idx_world_id_verifications_nullifier;
+    CREATE INDEX IF NOT EXISTS idx_world_id_verifications_proof
+      ON world_id_verifications(proof_hash)
+      WHERE proof_hash IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_world_id_verifications_identity_scope
+      ON world_id_verifications(token_id, check_kind, nullifier_hash, account_id)
+      WHERE nullifier_hash IS NOT NULL;
   `);
 }
 
