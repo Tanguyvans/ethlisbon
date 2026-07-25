@@ -43,9 +43,21 @@ export async function POST(request: Request) {
   }
 
   const idkitResponse = (await request.json()) as {
+    environment?: string;
     user_presence_completed?: boolean;
   };
   worldDebugLog("2/3 Complete IDKit payload received from World ID", idkitResponse);
+
+  if (idkitResponse.environment !== "production") {
+    return NextResponse.json(
+      {
+        error: "Selfie Check doit utiliser l’application World de production.",
+        code: "selfie_environment_mismatch",
+        details: `Environnement reçu : ${idkitResponse.environment ?? "absent"}.`,
+      },
+      { status: 400 },
+    );
+  }
 
   const response = await fetch(
     `https://developer.world.org/api/v4/verify/${encodeURIComponent(rpId)}`,

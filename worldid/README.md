@@ -26,17 +26,23 @@ Renseigner ensuite :
 - `WORLD_RP_SIGNING_KEY`
 - `WORLD_ACTION`, qui doit correspondre à l’action créée dans le portail
 - `WORLD_IDENTITY_ACTION=identity-check-demo`
-- `NEXT_PUBLIC_WORLD_ENVIRONMENT=production` avec l’application World officielle
+- `NEXT_PUBLIC_WORLD_SELFIE_ENVIRONMENT=production` pour Selfie Check dans
+  l’application World officielle
+- `NEXT_PUBLIC_WORLD_IDENTITY_ENVIRONMENT=staging` pour Identity Check dans le
+  World Simulator
 
 Ne jamais placer `WORLD_RP_SIGNING_KEY` dans une variable `NEXT_PUBLIC_*`.
 
-### Choisir l’environnement
+Les actions doivent exister dans l’environnement correspondant dans le
+Developer Portal : l’action selfie en production et l’action identity en
+staging.
 
-| Environnement | Client | Selfie Check |
+### Environnements utilisés
+
+| Parcours | Environnement | Client |
 | --- | --- | --- |
-| `production` | Application World officielle | Oui |
-| `staging` | Simulateur web | Non disponible actuellement |
-| `sandbox` | Build mobile Sandbox/TestFlight | Seulement avec un accès au build |
+| Selfie Check | `production` | Application World officielle |
+| Identity Check | `staging` | World Simulator |
 
 `staging` doit être utilisé uniquement avec le simulateur. Utiliser
 l’application World officielle avec `staging` peut produire une preuve Face
@@ -59,8 +65,12 @@ npm install
 npm run dev
 ```
 
-Ouvrir `http://localhost:3000`, choisir **Selfie continuity** ou **Identity
-attributes**, puis scanner le QR code avec l’application World officielle.
+Ouvrir `http://localhost:3000`, puis :
+
+- pour **Selfie continuity**, scanner le QR code avec l’application World
+  officielle ;
+- pour **Identity attributes**, ouvrir le lien **Use the simulator** affiché
+  sous le QR code.
 
 Si World refuse le visage sur le téléphone, aucune preuve n’est générée et
 `/api/verify-proof` n’est pas appelé. Il est donc normal de ne voir ni le log
@@ -103,12 +113,12 @@ actuellement une seule condition :
 minimum_age >= 18
 ```
 
-Le parcours **World réel** utilise le preset `identityCheck`, exige World ID
-4.0, une présence utilisateur fraîche et un credential NFC compatible
-(passeport, eID ou MNC). Le backend transmet la preuve à
+Le parcours **World Simulator** utilise le preset `identityCheck` en staging,
+exige World ID 4.0 et désactive le contrôle de présence optionnel, qui n’est pas
+pris en charge par le simulateur. Le backend transmet la preuve du simulateur à
 `POST /api/v4/verify/{rp_id}` avant d’accepter le résultat.
 
-Le parcours **Simulation** teste l’interface sans document :
+Le parcours **Mock local** teste uniquement l’interface :
 
 - il est clairement marqué `SIMULATED` ;
 - il ne génère aucune preuve cryptographique ;

@@ -73,6 +73,17 @@ export async function POST(request: Request) {
     );
   }
 
+  if (idkitResponse.environment !== "staging") {
+    return NextResponse.json(
+      {
+        error: "Identity Check doit utiliser le World Simulator staging.",
+        code: "identity_environment_mismatch",
+        details: `Environnement reçu : ${idkitResponse.environment ?? "absent"}.`,
+      },
+      { status: 400 },
+    );
+  }
+
   if (idkitResponse.protocol_version !== "4.0") {
     return NextResponse.json(
       {
@@ -89,16 +100,6 @@ export async function POST(request: Request) {
       {
         error: "Les attributs d’identité demandés ne correspondent pas.",
         code: "identity_attributes_not_matched",
-      },
-      { status: 400 },
-    );
-  }
-
-  if (idkitResponse.user_presence_completed !== true) {
-    return NextResponse.json(
-      {
-        error: "World n’a pas confirmé une présence utilisateur fraîche.",
-        code: "user_presence_required",
       },
       { status: 400 },
     );

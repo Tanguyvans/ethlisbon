@@ -18,6 +18,10 @@ export async function POST(request: Request) {
     flow === "identity"
       ? (process.env.WORLD_IDENTITY_ACTION ?? "identity-check-demo")
       : (process.env.WORLD_ACTION ?? "selfie-check-demo");
+  const environment =
+    flow === "identity"
+      ? (process.env.NEXT_PUBLIC_WORLD_IDENTITY_ENVIRONMENT ?? "staging")
+      : (process.env.NEXT_PUBLIC_WORLD_SELFIE_ENVIRONMENT ?? "production");
 
   if (!signingKey || !rpId) {
     return NextResponse.json(
@@ -49,15 +53,14 @@ export async function POST(request: Request) {
         app_id: process.env.NEXT_PUBLIC_WORLD_APP_ID,
         rp_id: rpId,
         action,
-        environment:
-          process.env.NEXT_PUBLIC_WORLD_ENVIRONMENT ?? "staging",
+        environment,
         credential_preset:
           flow === "identity" ? "IdentityCheck" : "SelfieCheckLegacy",
-        allow_legacy_proofs: true,
+        allow_legacy_proofs: flow !== "identity",
+        require_user_presence: flow === "selfie",
         signal:
           flow === "identity"
-            ? (process.env.NEXT_PUBLIC_WORLD_IDENTITY_SIGNAL ??
-              "identity-demo-user")
+            ? undefined
             : (process.env.NEXT_PUBLIC_WORLD_SIGNAL ?? "selfie-demo-user"),
         identity_attributes:
           flow === "identity"

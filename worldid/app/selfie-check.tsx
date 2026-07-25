@@ -37,13 +37,14 @@ const appId = (process.env.NEXT_PUBLIC_WORLD_APP_ID ??
   "app_xxxxx") as `app_${string}`;
 const signal =
   process.env.NEXT_PUBLIC_WORLD_SIGNAL ?? "selfie-demo-user";
-const configuredEnvironment = process.env.NEXT_PUBLIC_WORLD_ENVIRONMENT;
+const configuredEnvironment =
+  process.env.NEXT_PUBLIC_WORLD_SELFIE_ENVIRONMENT;
 const environment =
   configuredEnvironment === "production" ||
   configuredEnvironment === "staging" ||
   configuredEnvironment === "sandbox"
     ? configuredEnvironment
-    : "sandbox";
+    : "production";
 
 export function SelfieCheck({ isConfigured }: Props) {
   const [open, setOpen] = useState(false);

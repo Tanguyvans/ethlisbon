@@ -12,7 +12,7 @@ import {
 } from "./verification-inspector";
 
 type Status = "idle" | "preparing" | "ready" | "verified" | "error";
-type IdentityMode = "world" | "mock";
+type IdentityMode = "simulator" | "mock";
 
 type Props = {
   isConfigured: boolean;
@@ -39,18 +39,17 @@ type IdentityVerificationResponse = {
 
 const appId = (process.env.NEXT_PUBLIC_WORLD_APP_ID ??
   "app_xxxxx") as `app_${string}`;
-const signal =
-  process.env.NEXT_PUBLIC_WORLD_IDENTITY_SIGNAL ?? "identity-demo-user";
-const configuredEnvironment = process.env.NEXT_PUBLIC_WORLD_ENVIRONMENT;
+const configuredEnvironment =
+  process.env.NEXT_PUBLIC_WORLD_IDENTITY_ENVIRONMENT;
 const environment =
   configuredEnvironment === "production" ||
   configuredEnvironment === "staging" ||
   configuredEnvironment === "sandbox"
     ? configuredEnvironment
-    : "production";
+    : "staging";
 
 export function IdentityCheck({ isConfigured, mockEnabled }: Props) {
-  const [mode, setMode] = useState<IdentityMode>("world");
+  const [mode, setMode] = useState<IdentityMode>("simulator");
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [rpContext, setRpContext] = useState<RpContext | null>(null);
@@ -60,7 +59,7 @@ export function IdentityCheck({ isConfigured, mockEnabled }: Props) {
   const serverErrorRef = useRef<string | null>(null);
   const [message, setMessage] = useState(
     isConfigured
-      ? "Prêt à demander une attestation d’âge via un document NFC."
+      ? "Prêt à demander une attestation d’âge au World Simulator."
       : "Ajoute les identifiants World dans .env.local.",
   );
 
@@ -68,7 +67,6 @@ export function IdentityCheck({ isConfigured, mockEnabled }: Props) {
     () =>
       identityCheck({
         attributes: [{ type: "minimum_age", value: 18 }],
-        legacy_signal: signal,
       }),
     [],
   );
@@ -80,13 +78,13 @@ export function IdentityCheck({ isConfigured, mockEnabled }: Props) {
     setVerificationSnapshot(null);
     serverErrorRef.current = null;
     setMessage(
-      nextMode === "world"
-        ? "Prêt à demander une attestation d’âge via un document NFC."
+      nextMode === "simulator"
+        ? "Prêt à demander une attestation d’âge au World Simulator."
         : "Mode local : aucune preuve World ne sera créée ou vérifiée.",
     );
   }
 
-  async function startWorldCheck() {
+  async function startSimulatorCheck() {
     serverErrorRef.current = null;
     setVerificationSnapshot(null);
     setStatus("preparing");
@@ -113,7 +111,7 @@ export function IdentityCheck({ isConfigured, mockEnabled }: Props) {
       setAction(signedAction);
       setStatus("ready");
       setMessage(
-        "Demande créée. Continue dans World App avec un passeport ou une eID NFC.",
+        "Demande staging créée. Ouvre le lien World Simulator affiché sous le QR code.",
       );
       setOpen(true);
     } catch (error) {
@@ -200,10 +198,10 @@ export function IdentityCheck({ isConfigured, mockEnabled }: Props) {
         <div className="identity-mode" role="group" aria-label="Mode de test">
           <button
             type="button"
-            className={mode === "world" ? "is-active" : ""}
-            onClick={() => selectMode("world")}
+            className={mode === "simulator" ? "is-active" : ""}
+            onClick={() => selectMode("simulator")}
           >
-            World réel
+            World Simulator
           </button>
           <button
             type="button"
@@ -216,16 +214,21 @@ export function IdentityCheck({ isConfigured, mockEnabled }: Props) {
                 : "La simulation est désactivée dans cet environnement."
             }
           >
-            Simulation
+            Mock local
           </button>
         </div>
 
-        {mode === "mock" ? (
+        {mode === "simulator" ? (
+          <div className="simulation-banner" role="note">
+            <strong>STAGING</strong>
+            <span>Preuve vérifiée · World Simulator</span>
+          </div>
+        ) : (
           <div className="simulation-banner" role="note">
             <strong>SIMULATED</strong>
             <span>Aucune preuve World · développement uniquement</span>
           </div>
-        ) : null}
+        )}
 
         <div className="identity-dossier" aria-hidden="true">
           <div className="document-seal">
@@ -266,16 +269,16 @@ export function IdentityCheck({ isConfigured, mockEnabled }: Props) {
           <p>{message}</p>
         </div>
 
-        {mode === "world" ? (
+        {mode === "simulator" ? (
           <button
             className="primary-button"
             type="button"
-            onClick={startWorldCheck}
+            onClick={startSimulatorCheck}
             disabled={!isConfigured || status === "preparing"}
           >
             {status === "preparing"
               ? "Préparation…"
-              : "Lancer Identity Check"}
+              : "Lancer dans le simulateur"}
             <span aria-hidden="true">↗</span>
           </button>
         ) : (
@@ -311,8 +314,8 @@ export function IdentityCheck({ isConfigured, mockEnabled }: Props) {
             app_id={appId}
             action={action}
             rp_context={rpContext}
-            allow_legacy_proofs={true}
-            require_user_presence={true}
+            allow_legacy_proofs={false}
+            require_user_presence={false}
             environment={environment}
             preset={preset}
             handleVerify={async (result) => {
@@ -359,7 +362,7 @@ export function IdentityCheck({ isConfigured, mockEnabled }: Props) {
             onSuccess={() => {
               setStatus("verified");
               setMessage(
-                "World a vérifié le credential NFC et attesté la condition d’âge.",
+                "World a vérifié la preuve staging et attesté la condition d’âge.",
               );
             }}
             onError={(errorCode) => {

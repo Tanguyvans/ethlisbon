@@ -9,8 +9,10 @@ export default function Home() {
   const mockEnabled =
     process.env.NODE_ENV !== "production" &&
     process.env.IDENTITY_CHECK_MOCK !== "false";
-  const environment =
-    process.env.NEXT_PUBLIC_WORLD_ENVIRONMENT ?? "production";
+  const selfieEnvironment =
+    process.env.NEXT_PUBLIC_WORLD_SELFIE_ENVIRONMENT ?? "production";
+  const identityEnvironment =
+    process.env.NEXT_PUBLIC_WORLD_IDENTITY_ENVIRONMENT ?? "staging";
 
   return (
     <main className="shell">
@@ -20,7 +22,7 @@ export default function Home() {
         </a>
         <div className="environment">
           <span aria-hidden="true" />
-          {environment}
+          Selfie {selfieEnvironment} · Identity {identityEnvironment}
         </div>
       </header>
 
