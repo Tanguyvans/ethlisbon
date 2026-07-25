@@ -39,6 +39,19 @@ fi
 
 [ ! -f /data/.hermes/.env ] && touch /data/.hermes/.env
 
+# Seed the agent's identity/context files (AGENTS.md, etc.) from the
+# repo-committed defaults baked into the image, but only if the volume
+# doesn't already have one. This is what lets a fresh (or wiped) deployment
+# come up already knowing what it's for, while never clobbering an edit made
+# later by the operator or by the agent itself (it has file tools and is
+# expected to update its own AGENTS.md/SOUL.md over time).
+if [ -d /opt/hermes-agent-identity ]; then
+  for f in /opt/hermes-agent-identity/*; do
+    name="$(basename "$f")"
+    [ ! -f "/data/.hermes/$name" ] && cp "$f" "/data/.hermes/$name"
+  done
+fi
+
 # Bootstrap OAuth tokens from env var (e.g. xAI Grok SuperGrok).
 # Set HERMES_AUTH_JSON_BOOTSTRAP to the contents of a locally-generated
 # ~/.hermes/auth.json. Written only once — subsequent token refreshes update

@@ -157,6 +157,29 @@ else:
 # (key, label, category, is_secret)
 ENV_VARS = [
     ("LLM_MODEL",               "Model",                    "model",     False),
+    # ── Hedera operator / storefront (see .env.example) ─────────────────────
+    ("HEDERA_NETWORK",           "Network",                  "hedera",    False),
+    ("HEDERA_OPERATOR_ID",       "Operator account ID",      "hedera",    False),
+    ("HEDERA_OPERATOR_KEY",      "Operator private key",     "hedera",    True),
+    ("WALLETCONNECT_PROJECT_ID", "WalletConnect project ID", "hedera",    False),
+    # ── Token to deploy — parameters (mirror createTokenSchema) ─────────────
+    ("TOKEN_NAME",               "Token name",               "token",     False),
+    ("TOKEN_SYMBOL",             "Token symbol",             "token",     False),
+    ("TOKEN_TYPE",               "Token type",               "token",     False),
+    ("TOKEN_DECIMALS",           "Decimals",                 "token",     False),
+    ("TOKEN_INITIAL_SUPPLY",     "Initial supply",           "token",     False),
+    ("TOKEN_SUPPLY_TYPE",        "Supply type",              "token",     False),
+    ("TOKEN_MAX_SUPPLY",         "Max supply",               "token",     False),
+    ("TOKEN_ASSET_CATEGORY",     "Asset category",           "token",     False),
+    ("TOKEN_MEMO",               "Memo",                     "token",     False),
+    # ── Token to deploy — compliance (mirror complianceSchema) ──────────────
+    ("COMPLIANCE_KYC_REQUIRED",            "KYC required",           "token", False),
+    ("COMPLIANCE_FREEZE_DEFAULT",          "Freeze by default",      "token", False),
+    ("COMPLIANCE_WIPE_ENABLED",            "Wipe / clawback",        "token", False),
+    ("COMPLIANCE_PAUSE_ENABLED",           "Pausable",               "token", False),
+    ("COMPLIANCE_WORLDID_REQUIRED",        "World ID required",      "token", False),
+    ("COMPLIANCE_LIVENESS_ENABLED",        "Liveness re-check",      "token", False),
+    ("COMPLIANCE_LIVENESS_PERIOD_SECONDS", "Liveness period (s)",    "token", False),
     ("OPENROUTER_API_KEY",       "OpenRouter",               "provider",  True),
     ("DEEPSEEK_API_KEY",         "DeepSeek",                 "provider",  True),
     ("DASHSCOPE_API_KEY",        "Qwen Cloud (DashScope)",   "provider",  True),
@@ -486,11 +509,13 @@ def build_hermes_env() -> dict[str, str]:
 
 def write_env(path: Path, data: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    cat_order = ["model", "provider", "bedrock", "azure", "custom", "tool",
+    cat_order = ["model", "provider", "hedera", "token",
+                 "bedrock", "azure", "custom", "tool",
                  "telegram", "discord", "slack", "whatsapp",
                  "email", "mattermost", "matrix", "gateway", "admin"]
     cat_labels = {
         "model": "Model", "provider": "Providers",
+        "hedera": "Hedera operator", "token": "Token to deploy",
         "bedrock": "AWS Bedrock", "azure": "Azure Foundry",
         "custom": "Custom Endpoint", "tool": "Tools",
         "telegram": "Telegram", "discord": "Discord", "slack": "Slack",

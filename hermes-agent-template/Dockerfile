@@ -106,6 +106,11 @@ RUN mkdir -p /data/.hermes /data/tokenization
 COPY hermes-agent-template/server.py /app/server.py
 COPY hermes-agent-template/templates/ /app/templates/
 COPY hermes-agent-template/start.sh /app/start.sh
+# Default agent identity (AGENTS.md, etc.) — start.sh seeds these onto the
+# $HERMES_HOME volume only if the file isn't already there, same idiom as
+# config.yaml below, so this survives redeploys with a fresh/reused volume
+# without ever overwriting an operator's or the agent's own runtime edits.
+COPY hermes-agent-template/agent-identity/ /opt/hermes-agent-identity/
 COPY --from=tokenization-builder /build/tokenization/.next/standalone/ /app/tokenization/
 RUN chmod +x /app/start.sh
 
