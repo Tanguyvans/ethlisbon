@@ -128,7 +128,7 @@ The admin server runs on `$PORT` and manages Hermes plus the tokenization UI as 
 ## Running Locally
 
 ```bash
-docker build -f hermes-agent-template/Dockerfile -t hermes-agent .
+docker build -f apps/agent/Dockerfile -t hermes-agent .
 docker run --rm -it -p 8080:8080 \
   -e PORT=8080 \
   -e ADMIN_PASSWORD=changeme \
@@ -145,8 +145,8 @@ The Hermes dashboard at `http://localhost:8080/hermes` remains protected with
 `admin` / `changeme`.
 
 For Railway, keep the service **Root Directory** set to `/`. The repository-level
-`railway.toml` selects `hermes-agent-template/Dockerfile`, whose build context
-needs both `hermes-agent-template/` and `tokenization_platform/`.
+`railway.toml` selects `apps/agent/Dockerfile`, whose build context needs both
+`apps/agent/` and `apps/platform/`.
 
 ## Updating Hermes
 

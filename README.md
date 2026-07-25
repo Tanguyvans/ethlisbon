@@ -19,11 +19,10 @@ public "create token" button by design.
 
 | Path | What it is |
 |---|---|
-| [`hermes-agent-template/`](hermes-agent-template/README.md) | Python admin server (Starlette/Uvicorn) that runs the Hermes gateway + dashboard and reverse-proxies the storefront. This is the deployed Docker image. |
-| [`tokenization_platform/`](tokenization_platform/README.md) | Next.js 16 app that issues and manages HTS tokens via `@hiero-ledger/sdk` — the public storefront. Built into the same image. |
-| [`worldid/`](worldid/README.md) | Standalone "World ID Credential Lab" prototype for testing Selfie/Identity Check with IDKit. A separate experiment, excluded from the deployed image (`worldid` is in `.dockerignore`). |
-| `0g_agent_test/` | Empty placeholder, not currently used. |
-| `railway.toml`, `.dockerignore` | Root Railway build config — points at `hermes-agent-template/Dockerfile`; build context spans this whole repo. |
+| [`apps/platform/`](apps/platform/README.md) | Public Next.js 16 storefront and API. Owns wallets, Hedera operations, persistence, and trusted World ID verification. |
+| [`apps/agent/`](apps/agent/README.md) | Private Python operator console. Runs Hermes, the MCP adapters, and the public reverse proxy. Its Dockerfile builds the deployed image. |
+| [`docs/`](docs/architecture.md) | Cross-application architecture and ownership boundaries. |
+| `railway.toml`, `.dockerignore` | Root deployment configuration; Railway builds `apps/agent/Dockerfile` using the whole repository as context. |
 
 ## How it fits together
 
@@ -61,15 +60,14 @@ tokenization SQLite DB) lives on a Railway volume mounted at `/data`.
 ## Running it
 
 **Deploy to Railway:** keep the service Root Directory at `/` — `railway.toml`
-builds `hermes-agent-template/Dockerfile` with this whole repo as build
-context (it needs both `hermes-agent-template/` and `tokenization_platform/`).
-See [`hermes-agent-template/README.md`](hermes-agent-template/README.md) for
+builds `apps/agent/Dockerfile` with this whole repo as build context (it needs
+both production applications). See [`apps/agent/README.md`](apps/agent/README.md) for
 the full deploy checklist and environment variables.
 
 **Run the full container locally:**
 
 ```bash
-docker build -f hermes-agent-template/Dockerfile -t hermes-agent .
+docker build -f apps/agent/Dockerfile -t hermes-agent .
 docker run --rm -it -p 8080:8080 \
   -e PORT=8080 -e ADMIN_PASSWORD=changeme \
   -e HEDERA_NETWORK=testnet -e HEDERA_OPERATOR_ID=0.0.xxxxx \
@@ -81,11 +79,11 @@ docker run --rm -it -p 8080:8080 \
 Open `http://localhost:8080` for the public storefront; the Hermes dashboard
 is at `http://localhost:8080/hermes` (`admin` / your password).
 
-**Run a sub-project standalone** (e.g. for frontend-only iteration):
+**Run the platform standalone** (e.g. for frontend-only iteration):
 
 ```bash
-cd tokenization_platform   # or worldid/
-cp .env.example .env       # or .env.local for worldid/
+cd apps/platform
+cp .env.example .env
 npm install && npm run dev
 ```
 
@@ -94,9 +92,10 @@ npm install && npm run dev
 Each folder owns its own detailed README — env vars, architecture, and
 known limitations live there, not here:
 
-- **[`hermes-agent-template/README.md`](hermes-agent-template/README.md)** — admin dashboard features, environment variables, supported LLM providers/channels/tools, updating Hermes.
-- **[`tokenization_platform/README.md`](tokenization_platform/README.md)** — why HTS over an ERC-20 contract, compliance-checkbox → HTS-feature mapping, the liveness/auto-reclaim scheduled-transaction mechanism, and hackathon-scope simplifications.
-- **[`worldid/README.md`](worldid/README.md)** (French) — the standalone World ID Selfie/Identity Check test lab.
+- **[`apps/agent/README.md`](apps/agent/README.md)** — admin dashboard features, environment variables, supported LLM providers/channels/tools, updating Hermes.
+- **[`apps/platform/README.md`](apps/platform/README.md)** — HTS architecture, compliance controls, wallet flow, World ID verification, and known limitations.
+- **[`docs/architecture.md`](docs/architecture.md)** — which runtime owns each responsibility and how the single Railway image is assembled.
+- **[`docs/worldid-feedback.md`](docs/worldid-feedback.md)** — integration notes collected while testing World ID.
 
 ## Credits
 

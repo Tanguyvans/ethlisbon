@@ -1,6 +1,6 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "hermes-agent-template/Dockerfile"
+dockerfilePath = "apps/agent/Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"

@@ -1,7 +1,7 @@
 """Hedera tokenization MCP server for the Hermes agent.
 
 Thin stdio MCP server exposing the operator-facing Hedera Token Service (HTS)
-operations that the tokenization_platform Next.js app already implements. Every
+operations that the `apps/platform` Next.js app already implements. Every
 tool here is a single HTTP call to that app's REST API on container loopback
 (TOKENIZATION_BASE_URL, default http://127.0.0.1:3000) — it performs no Hedera
 SDK calls itself and never sees the operator private key. The Next.js app
@@ -42,7 +42,7 @@ mcp = FastMCP("hedera")
 class TokenizationApiError(RuntimeError):
     """Raised with the tokenization app's own {error} message so the agent sees
     the same friendly text a human would get from the REST API (see
-    tokenization_platform/src/lib/api/helpers.ts:handleRoute)."""
+    apps/platform/src/lib/api/helpers.ts:handleRoute)."""
 
 
 def _call(method: str, path: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -323,7 +323,7 @@ def pause_token(token_id: str, paused: bool = True) -> dict[str, Any]:
 def _selftest() -> None:
     """Bypass MCP transport and call a tool function directly — useful to
     smoke-test the HTTP wiring against a locally running tokenization app
-    without needing an MCP client. Run: python hedera_mcp.py --selftest
+    without needing an MCP client. Run: python mcp/hedera.py --selftest
     """
     import json
 

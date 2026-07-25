@@ -14,5 +14,11 @@
    option. It would be helpful to either support it or clearly mention this
    limitation in the Selfie Check documentation.
 
-4. **identity:** The avaibles countries should be visible in the docs for now
-   they are only in the World App
+4. **Identity Check countries:** The available countries should be listed in
+   the documentation. Currently, they are only visible in World App.
+
+5. **Identity Check simulator does not support Presence Check:** An Identity
+   Check request in staging fails with `user_presence_failed` when
+   `require_user_presence=true`, because the simulator cannot complete the
+   presence step. This simulator limitation should be stated next to the
+   `require_user_presence` option in the documentation.

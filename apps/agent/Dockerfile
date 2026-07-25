@@ -1,6 +1,6 @@
-FROM node:22-bookworm-slim AS tokenization-builder
+FROM node:22-bookworm-slim AS platform-builder
 
-WORKDIR /build/tokenization
+WORKDIR /build/platform
 
 # better-sqlite3 is a native Node module. Its Node 22 binary is not always
 # available from npm, so node-gyp needs Python and a C/C++ toolchain to build it.
@@ -10,10 +10,10 @@ RUN apt-get update && \
 
 # Install dependencies before copying application sources so Docker can reuse
 # the expensive npm layer while only UI/application code changes.
-COPY tokenization_platform/package.json tokenization_platform/package-lock.json ./
+COPY apps/platform/package.json apps/platform/package-lock.json ./
 RUN npm ci
 
-COPY tokenization_platform/ ./
+COPY apps/platform/ ./
 RUN npm run build && \
     cp -r public .next/standalone/ && \
     cp -r .next/static .next/standalone/.next/
@@ -98,22 +98,22 @@ RUN git clone --depth 1 --branch ${HERMES_REF} https://github.com/NousResearch/h
 # editable from /opt/hermes-agent.
 RUN printf 'docker\n' > /opt/hermes-agent/.install_method
 
-COPY hermes-agent-template/requirements.txt /app/requirements.txt
+COPY apps/agent/requirements.txt /app/requirements.txt
 RUN uv pip install --system --no-cache -r /app/requirements.txt
 
 RUN mkdir -p /data/.hermes /data/tokenization
 
-COPY hermes-agent-template/server.py /app/server.py
-COPY hermes-agent-template/hedera_mcp.py /app/hedera_mcp.py
-COPY hermes-agent-template/worldid_mcp.py /app/worldid_mcp.py
-COPY hermes-agent-template/templates/ /app/templates/
-COPY hermes-agent-template/start.sh /app/start.sh
+COPY apps/agent/server.py /app/server.py
+COPY apps/agent/mcp/hedera.py /app/hedera_mcp.py
+COPY apps/agent/mcp/worldid.py /app/worldid_mcp.py
+COPY apps/agent/templates/ /app/templates/
+COPY apps/agent/start.sh /app/start.sh
 # Default agent identity (AGENTS.md, etc.) — start.sh seeds these onto the
 # $HERMES_HOME volume only if the file isn't already there, same idiom as
 # config.yaml below, so this survives redeploys with a fresh/reused volume
 # without ever overwriting an operator's or the agent's own runtime edits.
-COPY hermes-agent-template/agent-identity/ /opt/hermes-agent-identity/
-COPY --from=tokenization-builder /build/tokenization/.next/standalone/ /app/tokenization/
+COPY apps/agent/agent-identity/ /opt/hermes-agent-identity/
+COPY --from=platform-builder /build/platform/.next/standalone/ /app/tokenization/
 RUN chmod +x /app/start.sh
 
 ENV HOME=/data
