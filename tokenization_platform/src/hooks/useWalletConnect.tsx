@@ -73,11 +73,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       if (!accountId) throw new Error("Connect a wallet first");
       const connector = await getDAppConnector();
       const signer = connector.getSigner(AccountId.fromString(accountId));
-      const frozen = await new TokenAssociateTransaction()
+      const transaction = new TokenAssociateTransaction()
         .setAccountId(AccountId.fromString(accountId))
-        .setTokenIds([TokenId.fromString(tokenId)])
-        .freezeWithSigner(signer);
-      const response = await frozen.executeWithSigner(signer);
+        .setTokenIds([TokenId.fromString(tokenId)]);
+      const response = await transaction.executeWithSigner(signer);
       return response.transactionId.toString();
     },
     [accountId]
@@ -88,15 +87,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       if (!accountId) throw new Error("Connect a wallet first");
       const connector = await getDAppConnector();
       const signer = connector.getSigner(AccountId.fromString(accountId));
-      const frozen = await new AccountAllowanceApproveTransaction()
+      const transaction = new AccountAllowanceApproveTransaction()
         .approveTokenAllowance(
           TokenId.fromString(tokenId),
           AccountId.fromString(accountId),
           AccountId.fromString(spenderAccountId),
           amount
-        )
-        .freezeWithSigner(signer);
-      const response = await frozen.executeWithSigner(signer);
+        );
+      const response = await transaction.executeWithSigner(signer);
       return response.transactionId.toString();
     },
     [accountId]
