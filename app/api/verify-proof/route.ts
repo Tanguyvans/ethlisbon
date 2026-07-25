@@ -42,7 +42,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const idkitResponse: unknown = await request.json();
+  const idkitResponse = (await request.json()) as {
+    user_presence_completed?: boolean;
+  };
   worldDebugLog("2/3 Complete IDKit payload received from World ID", idkitResponse);
 
   const response = await fetch(
@@ -78,6 +80,17 @@ export async function POST(request: Request) {
         error: "World a refusé la preuve.",
         code: worldError.code,
         details: worldError.detail,
+        ...debugPayload,
+      },
+      { status: 400 },
+    );
+  }
+
+  if (idkitResponse.user_presence_completed !== true) {
+    return NextResponse.json(
+      {
+        error: "World n’a pas confirmé une présence utilisateur fraîche.",
+        code: "user_presence_required",
         ...debugPayload,
       },
       { status: 400 },

@@ -4,10 +4,20 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+type VerificationFlow = "selfie" | "identity";
+
+export async function POST(request: Request) {
   const signingKey = process.env.WORLD_RP_SIGNING_KEY;
   const rpId = process.env.WORLD_RP_ID;
-  const action = process.env.WORLD_ACTION ?? "selfie-check-demo";
+  const body = (await request.json().catch(() => ({}))) as {
+    flow?: VerificationFlow;
+  };
+  const flow: VerificationFlow =
+    body.flow === "identity" ? "identity" : "selfie";
+  const action =
+    flow === "identity"
+      ? (process.env.WORLD_IDENTITY_ACTION ?? "identity-check-demo")
+      : (process.env.WORLD_ACTION ?? "selfie-check-demo");
 
   if (!signingKey || !rpId) {
     return NextResponse.json(
@@ -41,10 +51,18 @@ export async function POST() {
         action,
         environment:
           process.env.NEXT_PUBLIC_WORLD_ENVIRONMENT ?? "staging",
-        credential_preset: "SelfieCheckLegacy",
+        credential_preset:
+          flow === "identity" ? "IdentityCheck" : "SelfieCheckLegacy",
         allow_legacy_proofs: true,
         signal:
-          process.env.NEXT_PUBLIC_WORLD_SIGNAL ?? "selfie-demo-user",
+          flow === "identity"
+            ? (process.env.NEXT_PUBLIC_WORLD_IDENTITY_SIGNAL ??
+              "identity-demo-user")
+            : (process.env.NEXT_PUBLIC_WORLD_SIGNAL ?? "selfie-demo-user"),
+        identity_attributes:
+          flow === "identity"
+            ? [{ type: "minimum_age", value: 18 }]
+            : undefined,
       },
       rp_context: rpContext,
       excluded: ["WORLD_RP_SIGNING_KEY"],

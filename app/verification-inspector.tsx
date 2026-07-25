@@ -101,6 +101,8 @@ export function VerificationInspector({ snapshot }: Props) {
   const worldExchange = asRecord(snapshot?.world);
   const worldBody = asRecord(worldExchange.body);
   const worldResult = firstRecord(worldBody.results);
+  const backend = asRecord(snapshot?.backend);
+  const isSimulated = backend.simulated === true;
 
   const phaseLabels: Record<VerificationPhase, string> = {
     idle: "En attente",
@@ -175,6 +177,20 @@ export function VerificationInspector({ snapshot }: Props) {
                 )}
               </dd>
             </div>
+            <div>
+              <dt>Source</dt>
+              <dd>{isSimulated ? "Simulation locale" : "World"}</dd>
+            </div>
+            <div>
+              <dt>Attributs</dt>
+              <dd>
+                {idkit.identity_attested === true
+                  ? "Attestés"
+                  : idkit.identity_attested === false
+                    ? "Non attestés"
+                    : "—"}
+              </dd>
+            </div>
             <div className="receipt-wide">
               <dt>Nullifier</dt>
               <dd title={displayValue(idkitResponse.nullifier)}>
@@ -195,7 +211,15 @@ export function VerificationInspector({ snapshot }: Props) {
             />
           ) : null}
           {snapshot.world !== undefined ? (
-            <RawBlock label="02 · World Verify API" value={snapshot.world} open />
+            <RawBlock
+              label={
+                isSimulated
+                  ? "02 · Simulateur local"
+                  : "02 · World Verify API"
+              }
+              value={snapshot.world}
+              open
+            />
           ) : null}
           {snapshot.backend !== undefined ? (
             <RawBlock label="03 · Backend → interface" value={snapshot.backend} />

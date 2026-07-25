@@ -89,6 +89,7 @@ export function SelfieCheck({ isConfigured }: Props) {
       const response = await fetch("/api/rp-signature", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        body: JSON.stringify({ flow: "selfie" }),
       });
       const payload = (await response.json()) as
         | SignatureResponse
@@ -200,6 +201,7 @@ export function SelfieCheck({ isConfigured }: Props) {
           action={action}
           rp_context={rpContext}
           allow_legacy_proofs={true}
+          require_user_presence={true}
           environment={environment}
           preset={preset}
           handleVerify={async (result) => {

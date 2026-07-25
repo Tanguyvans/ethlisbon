@@ -1,4 +1,4 @@
-import { SelfieCheck } from "./selfie-check";
+import { VerificationLab } from "./verification-lab";
 
 export default function Home() {
   const isConfigured = Boolean(
@@ -6,42 +6,45 @@ export default function Home() {
       process.env.WORLD_RP_ID &&
       process.env.WORLD_RP_SIGNING_KEY,
   );
+  const mockEnabled =
+    process.env.NODE_ENV !== "production" &&
+    process.env.IDENTITY_CHECK_MOCK !== "false";
+  const environment =
+    process.env.NEXT_PUBLIC_WORLD_ENVIRONMENT ?? "production";
 
   return (
     <main className="shell">
       <header className="topbar">
-        <a className="wordmark" href="#main" aria-label="Selfie Check Lab">
-          SELFIE / LAB
+        <a className="wordmark" href="#main" aria-label="World Credential Lab">
+          WORLD / CREDENTIAL LAB
         </a>
         <div className="environment">
           <span aria-hidden="true" />
-          {process.env.NEXT_PUBLIC_WORLD_ENVIRONMENT === "production"
-            ? "Production"
-            : "Sandbox"}
+          {environment}
         </div>
       </header>
 
       <section className="hero" id="main">
         <div className="intro">
-          <p className="eyebrow">World ID · Selfie Check Beta</p>
+          <p className="eyebrow">World ID · Credential Lab</p>
           <h1>
-            Une personne,
+            Prouver l’essentiel,
             <br />
-            <em>ici et maintenant.</em>
+            <em>sans tout révéler.</em>
           </h1>
           <p className="lede">
-            Lance une demande depuis ce navigateur, puis termine-la avec le
-            simulateur World ou l’application mobile Sandbox.
+            Teste la continuité d’un visage ou une condition issue d’un document
+            NFC. Le navigateur ne reçoit ni selfie, ni passeport.
           </p>
 
           <ol className="steps" aria-label="Étapes du test">
             <li>
               <span>01</span>
-              Ouvre le test
+              Choisis la preuve
             </li>
             <li>
               <span>02</span>
-              Choisis le simulateur
+              Continue dans World
             </li>
             <li>
               <span>03</span>
@@ -50,12 +53,15 @@ export default function Home() {
           </ol>
         </div>
 
-        <SelfieCheck isConfigured={isConfigured} />
+        <VerificationLab
+          isConfigured={isConfigured}
+          mockEnabled={mockEnabled}
+        />
       </section>
 
       <footer>
-        <p>La photo n’est pas traitée par cette application.</p>
-        <p>IDKit 4 · Face proof legacy 3.0</p>
+        <p>Ni photo ni document ne sont traités par cette application.</p>
+        <p>IDKit 4 · Face v3 + Identity v4</p>
       </footer>
     </main>
   );
