@@ -23,8 +23,25 @@ function openDb(): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA_SQL);
+  migrateTokenCompliancePolicy(db);
 
   return db;
+}
+
+/** CREATE TABLE IF NOT EXISTS does not add columns to Railway's existing persistent DB. */
+function migrateTokenCompliancePolicy(db: Database.Database): void {
+  const columns = new Set(
+    (db.pragma("table_info(tokens)") as Array<{ name: string }>).map((column) => column.name)
+  );
+  const additions = [
+    ["world_id_selfie_check", "INTEGER NOT NULL DEFAULT 0"],
+    ["world_id_minimum_age", "INTEGER"],
+    ["world_id_nationality", "TEXT"],
+  ] as const;
+
+  for (const [name, definition] of additions) {
+    if (!columns.has(name)) db.exec(`ALTER TABLE tokens ADD COLUMN ${name} ${definition}`);
+  }
 }
 
 // Cache the connection on `globalThis` so Next.js dev-mode module reloads (and route handler

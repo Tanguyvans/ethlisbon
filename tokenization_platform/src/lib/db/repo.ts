@@ -35,6 +35,9 @@ interface TokenRow {
   wipe_enabled: number;
   pause_enabled: number;
   world_id_required: number;
+  world_id_selfie_check: number;
+  world_id_minimum_age: number | null;
+  world_id_nationality: string | null;
   liveness_enabled: number;
   liveness_period_seconds: number | null;
   custom_fee_enabled: number;
@@ -96,12 +99,22 @@ interface TokenRequestRow {
 }
 
 function mapToken(row: TokenRow): TokenRecord {
+  // Tokens created before the detailed policy migration only stored a generic World ID flag.
+  // Preserve their former behaviour by treating that legacy flag as Selfie Check.
+  const hasDetailedWorldIdPolicy =
+    !!row.world_id_selfie_check ||
+    row.world_id_minimum_age != null ||
+    row.world_id_nationality != null;
   const compliance: ComplianceOptions = {
     kycRequired: !!row.kyc_required,
     freezeDefault: !!row.freeze_default,
     wipeEnabled: !!row.wipe_enabled,
     pauseEnabled: !!row.pause_enabled,
     worldIdRequired: !!row.world_id_required,
+    worldIdSelfieCheck:
+      !!row.world_id_selfie_check || (!!row.world_id_required && !hasDetailedWorldIdPolicy),
+    worldIdMinimumAge: row.world_id_minimum_age ?? undefined,
+    worldIdNationality: row.world_id_nationality ?? undefined,
     livenessEnabled: !!row.liveness_enabled,
     livenessPeriodSeconds: row.liveness_period_seconds ?? undefined,
   };
@@ -229,6 +242,7 @@ export function insertToken(params: InsertTokenParams): TokenRecord {
       id, name, symbol, token_type, decimals, initial_supply, supply_type, max_supply,
       treasury_account_id, asset_category, memo,
       kyc_required, freeze_default, wipe_enabled, pause_enabled, world_id_required,
+      world_id_selfie_check, world_id_minimum_age, world_id_nationality,
       liveness_enabled, liveness_period_seconds,
       custom_fee_enabled, custom_fee_config,
       has_admin_key, has_kyc_key, has_freeze_key, has_wipe_key, has_pause_key, has_supply_key, has_fee_schedule_key,
@@ -237,6 +251,7 @@ export function insertToken(params: InsertTokenParams): TokenRecord {
       @id, @name, @symbol, @tokenType, @decimals, @initialSupply, @supplyType, @maxSupply,
       @treasuryAccountId, @assetCategory, @memo,
       @kycRequired, @freezeDefault, @wipeEnabled, @pauseEnabled, @worldIdRequired,
+      @worldIdSelfieCheck, @worldIdMinimumAge, @worldIdNationality,
       @livenessEnabled, @livenessPeriodSeconds,
       @customFeeEnabled, @customFeeConfig,
       @hasAdminKey, @hasKycKey, @hasFreezeKey, @hasWipeKey, @hasPauseKey, @hasSupplyKey, @hasFeeScheduleKey,
@@ -259,6 +274,9 @@ export function insertToken(params: InsertTokenParams): TokenRecord {
     wipeEnabled: params.compliance.wipeEnabled ? 1 : 0,
     pauseEnabled: params.compliance.pauseEnabled ? 1 : 0,
     worldIdRequired: params.compliance.worldIdRequired ? 1 : 0,
+    worldIdSelfieCheck: params.compliance.worldIdSelfieCheck ? 1 : 0,
+    worldIdMinimumAge: params.compliance.worldIdMinimumAge ?? null,
+    worldIdNationality: params.compliance.worldIdNationality ?? null,
     livenessEnabled: params.compliance.livenessEnabled ? 1 : 0,
     livenessPeriodSeconds: params.compliance.livenessPeriodSeconds ?? null,
     customFeeEnabled: params.customFee ? 1 : 0,

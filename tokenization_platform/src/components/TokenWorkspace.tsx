@@ -87,7 +87,13 @@ function TokenHeader({ token }: { token: TokenRecord }) {
         {token.compliance.wipeEnabled && <Badge>Wipe key</Badge>}
         {token.compliance.pauseEnabled && <Badge>Pause key</Badge>}
         {token.customFee && <Badge>Custom fee</Badge>}
-        {token.compliance.worldIdRequired && <Badge tone="violet">World ID required</Badge>}
+        {token.compliance.worldIdSelfieCheck && <Badge tone="violet">Selfie Check</Badge>}
+        {token.compliance.worldIdMinimumAge && (
+          <Badge tone="violet">Age {token.compliance.worldIdMinimumAge}+</Badge>
+        )}
+        {token.compliance.worldIdNationality && (
+          <Badge tone="violet">Nationality {token.compliance.worldIdNationality}</Badge>
+        )}
         {token.compliance.livenessEnabled && (
           <Badge tone="amber">
             Liveness · reclaim after {formatPeriod(token.compliance.livenessPeriodSeconds)}

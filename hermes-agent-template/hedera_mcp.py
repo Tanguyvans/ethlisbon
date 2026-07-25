@@ -31,6 +31,11 @@ from mcp.server.fastmcp import FastMCP
 BASE_URL = os.environ.get("TOKENIZATION_BASE_URL", "http://127.0.0.1:3000").rstrip("/")
 AGENT_SECRET = os.environ.get("TOKENIZATION_AGENT_SECRET", "")
 
+WORLD_ID_NATIONALITIES = {
+    "ARG", "AUS", "CHL", "COL", "CRI", "GBR", "HRV", "ITA",
+    "JPN", "KOR", "MEX", "MYS", "PAN", "PRT", "SGP", "USA",
+}
+
 mcp = FastMCP("hedera")
 
 
@@ -154,7 +159,9 @@ def deploy_token(
     freeze_default: bool = False,
     wipe_enabled: bool = False,
     pause_enabled: bool = False,
-    world_id_required: bool = False,
+    selfie_check: bool = False,
+    minimum_age: int | None = None,
+    nationality: str | None = None,
     liveness_enabled: bool = False,
     liveness_period_seconds: int | None = None,
 ) -> dict[str, Any]:
@@ -184,9 +191,13 @@ def deploy_token(
         wipe_enabled: Set a wipe key, enabling reclaim_now to claw back tokens
             directly.
         pause_enabled: Set a pause key, enabling pause_token.
-        world_id_required: Require World ID verification before a holder can
-            be whitelisted. Needs kyc_required or freeze_default enabled too
-            (World ID needs one of those as the actual gating mechanism).
+        selfie_check: Require World ID Selfie Check before whitelisting.
+        minimum_age: Optional World ID Identity Check minimum age, from 1 to
+            120. Use None when no age restriction is wanted.
+        nationality: Optional World ID Identity Check nationality as an ISO
+            3166-1 alpha-3 code. Supported values: ARG, AUS, CHL, COL, CRI,
+            GBR, HRV, ITA, JPN, KOR, MEX, MYS, PAN, PRT, SGP, USA. Use None
+            when no nationality restriction is wanted.
         liveness_enabled: Enable recurring liveness re-checks with scheduled
             auto-reclaim if a holder goes stale. Requires
             liveness_period_seconds.
@@ -195,6 +206,14 @@ def deploy_token(
     """
     if supply_type == "FINITE" and not max_supply:
         raise TokenizationApiError("max_supply is required when supply_type is FINITE.")
+    normalized_nationality = nationality.strip().upper() if nationality else None
+    if minimum_age is not None and not 1 <= minimum_age <= 120:
+        raise TokenizationApiError("minimum_age must be between 1 and 120.")
+    if normalized_nationality and normalized_nationality not in WORLD_ID_NATIONALITIES:
+        raise TokenizationApiError(
+            f"Unsupported World ID nationality code: {normalized_nationality}."
+        )
+    world_id_required = bool(selfie_check or minimum_age is not None or normalized_nationality)
     if world_id_required and not (kyc_required or freeze_default):
         raise TokenizationApiError(
             "world_id_required needs a whitelisting mechanism to gate — enable "
@@ -217,6 +236,9 @@ def deploy_token(
             "wipeEnabled": wipe_enabled,
             "pauseEnabled": pause_enabled,
             "worldIdRequired": world_id_required,
+            "worldIdSelfieCheck": selfie_check,
+            **({"worldIdMinimumAge": minimum_age} if minimum_age is not None else {}),
+            **({"worldIdNationality": normalized_nationality} if normalized_nationality else {}),
             "livenessEnabled": liveness_enabled,
             **({"livenessPeriodSeconds": liveness_period_seconds} if liveness_period_seconds else {}),
         },

@@ -43,6 +43,9 @@ export interface ComplianceOptions {
   wipeEnabled: boolean;
   pauseEnabled: boolean;
   worldIdRequired: boolean;
+  worldIdSelfieCheck: boolean;
+  worldIdMinimumAge?: number;
+  worldIdNationality?: string;
   livenessEnabled: boolean;
   livenessPeriodSeconds?: number;
 }

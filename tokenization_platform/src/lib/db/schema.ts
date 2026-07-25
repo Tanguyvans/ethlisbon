@@ -25,6 +25,9 @@ CREATE TABLE IF NOT EXISTS tokens (
   wipe_enabled                INTEGER NOT NULL DEFAULT 0,
   pause_enabled               INTEGER NOT NULL DEFAULT 0,
   world_id_required           INTEGER NOT NULL DEFAULT 0,
+  world_id_selfie_check       INTEGER NOT NULL DEFAULT 0,
+  world_id_minimum_age        INTEGER,
+  world_id_nationality        TEXT,
   liveness_enabled            INTEGER NOT NULL DEFAULT 0,
   liveness_period_seconds     INTEGER,
 

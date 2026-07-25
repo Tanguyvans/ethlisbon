@@ -54,7 +54,21 @@ function ArrowIcon() {
 
 function tokenControls(token: TokenRecord) {
   const controls: string[] = [];
-  if (token.compliance.worldIdRequired) controls.push("World ID");
+  if (token.compliance.worldIdSelfieCheck) controls.push("Selfie Check");
+  if (token.compliance.worldIdMinimumAge) {
+    controls.push(`Age ${token.compliance.worldIdMinimumAge}+`);
+  }
+  if (token.compliance.worldIdNationality) {
+    controls.push(`Nationality ${token.compliance.worldIdNationality}`);
+  }
+  if (
+    token.compliance.worldIdRequired &&
+    !token.compliance.worldIdSelfieCheck &&
+    !token.compliance.worldIdMinimumAge &&
+    !token.compliance.worldIdNationality
+  ) {
+    controls.push("World ID");
+  }
   if (token.compliance.kycRequired) controls.push("KYC");
   if (token.compliance.livenessEnabled) controls.push("Liveness");
   if (token.compliance.freezeDefault) controls.push("Freeze");

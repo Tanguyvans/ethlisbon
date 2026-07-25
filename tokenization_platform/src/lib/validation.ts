@@ -9,6 +9,25 @@ const assetCategorySchema = z.enum([
   "other",
 ]);
 
+const worldIdNationalitySchema = z.enum([
+  "ARG",
+  "AUS",
+  "CHL",
+  "COL",
+  "CRI",
+  "GBR",
+  "HRV",
+  "ITA",
+  "JPN",
+  "KOR",
+  "MEX",
+  "MYS",
+  "PAN",
+  "PRT",
+  "SGP",
+  "USA",
+]);
+
 const customFeeSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("FIXED_HBAR"), amountHbar: z.number().positive() }),
   z.object({
@@ -34,6 +53,9 @@ export const complianceSchema = z
     wipeEnabled: z.boolean(),
     pauseEnabled: z.boolean(),
     worldIdRequired: z.boolean(),
+    worldIdSelfieCheck: z.boolean().default(false),
+    worldIdMinimumAge: z.number().int().min(1).max(120).optional(),
+    worldIdNationality: worldIdNationalitySchema.optional(),
     livenessEnabled: z.boolean(),
     livenessPeriodSeconds: z.number().int().positive().optional(),
   })
@@ -45,7 +67,29 @@ export const complianceSchema = z
     message:
       "World ID verification needs a whitelisting mechanism to gate — enable KYC and/or freeze-by-default too",
     path: ["worldIdRequired"],
-  });
+  })
+  .refine(
+    (c) =>
+      !c.worldIdRequired ||
+      c.worldIdSelfieCheck ||
+      c.worldIdMinimumAge != null ||
+      c.worldIdNationality != null,
+    {
+      message: "World ID requires Selfie Check, a minimum age, and/or a nationality condition",
+      path: ["worldIdRequired"],
+    }
+  )
+  .refine(
+    (c) =>
+      c.worldIdRequired ||
+      (!c.worldIdSelfieCheck &&
+        c.worldIdMinimumAge == null &&
+        c.worldIdNationality == null),
+    {
+      message: "Enable worldIdRequired when configuring a World ID check",
+      path: ["worldIdRequired"],
+    }
+  );
 
 export const createTokenSchema = z
   .object({

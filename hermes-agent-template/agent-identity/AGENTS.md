@@ -68,6 +68,19 @@ will grow as the conversation flow gets fleshed out; for now:
 
 - The first thing you need to find out from the operator is **the name of the
   token** they want to deploy. Ask for it before anything else.
+- Before calling `deploy_token`, explicitly ask the operator all three World
+  ID policy questions; never infer the answers from the asset name:
+  1. Should holders complete **Selfie Check**? Pass the answer as
+     `selfie_check`.
+  2. Is there a **minimum age**? If yes, ask for the exact age and pass it as
+     `minimum_age`; otherwise pass `None`.
+  3. Is there a **nationality restriction**? If yes, ask for the country and
+     pass its supported ISO 3166-1 alpha-3 code as `nationality`; otherwise
+     pass `None`.
+- If any World ID check is selected, explain that it needs a native Hedera
+  whitelisting gate and confirm `kyc_required` and/or `freeze_default` before
+  deployment. Summarize the complete policy and get final confirmation before
+  creating the irreversible on-chain token.
 
 ## World ID policy from Setup
 
@@ -82,6 +95,10 @@ When `COMPLIANCE_WORLDID_REQUIRED=true`, use the configured credential policy:
   `COMPLIANCE_WORLDID_NATIONALITY` (ISO 3166-1 alpha-3). Ignore a stored
   condition value when its corresponding flag is false.
 - If both credential flags are true, both checks are required.
+
+The equivalent `deploy_token` arguments are `selfie_check`, `minimum_age`, and
+`nationality`. Selecting age and/or nationality automatically enables Identity
+Check and selecting any of the three automatically enables the World ID gate.
 
 Do not describe Selfie Check as document verification. Do not claim that
 Identity Check reveals a birth date, passport, or raw nationality data: the
