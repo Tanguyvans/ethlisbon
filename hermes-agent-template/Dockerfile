@@ -2,6 +2,12 @@ FROM node:22-bookworm-slim AS tokenization-builder
 
 WORKDIR /build/tokenization
 
+# better-sqlite3 is a native Node module. Its Node 22 binary is not always
+# available from npm, so node-gyp needs Python and a C/C++ toolchain to build it.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 make g++ && \
+    rm -rf /var/lib/apt/lists/*
+
 # Install dependencies before copying application sources so Docker can reuse
 # the expensive npm layer while only UI/application code changes.
 COPY tokenization_platform/package.json tokenization_platform/package-lock.json ./
