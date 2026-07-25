@@ -1,0 +1,25 @@
+type Token @entity(immutable: false) {
+  id: ID! # token contract address
+  name: String
+  symbol: String
+  decimals: Int!
+  transferCount: BigInt!
+}
+
+type Account @entity(immutable: false) {
+  id: ID! # account address
+  balance: BigInt!
+  sentCount: BigInt!
+  receivedCount: BigInt!
+}
+
+type Transfer @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  from: Account!
+  to: Account!
+  value: BigInt!
+  isMintOrBurn: Boolean! # true if from or to is the zero address
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}

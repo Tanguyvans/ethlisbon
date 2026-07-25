@@ -1,0 +1,35 @@
+specVersion: 1.3.0
+indexerHints:
+  prune: auto
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: test
+    network: sepolia
+    source:
+      address: "0xf531b8f309be94191af87605cfbf600d71c2cfe0"
+      abi: test
+      startBlock: 11350000
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - Approval
+        - Deposit
+        - Transfer
+        - Withdrawal
+      abis:
+        - name: test
+          file: ./abis/test.json
+      eventHandlers:
+        - event: Approval(indexed address,indexed address,uint256)
+          handler: handleApproval
+        - event: Deposit(indexed address,uint256)
+          handler: handleDeposit
+        - event: Transfer(indexed address,indexed address,uint256)
+          handler: handleTransfer
+        - event: Withdrawal(indexed address,uint256)
+          handler: handleWithdrawal
+      file: ./src/test.ts
