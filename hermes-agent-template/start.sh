@@ -39,16 +39,32 @@ fi
 
 [ ! -f /data/.hermes/.env ] && touch /data/.hermes/.env
 
-# Seed the agent's identity/context files (AGENTS.md, etc.) from the
-# repo-committed defaults baked into the image, but only if the volume
-# doesn't already have one. This is what lets a fresh (or wiped) deployment
-# come up already knowing what it's for, while never clobbering an edit made
-# later by the operator or by the agent itself (it has file tools and is
-# expected to update its own AGENTS.md/SOUL.md over time).
+# Seed the agent's identity/context files from the repo-committed defaults
+# baked into the image, but only if the volume doesn't already have one. This
+# lets a fresh (or wiped) deployment come up already knowing what it's for,
+# while never clobbering an edit made later by the operator or by the agent
+# itself (it has file tools and is expected to update these over time).
+#
+# Routing matters: Hermes loads these two file classes from DIFFERENT places.
+#   - Project-context files (AGENTS.md, .hermes.md, CLAUDE.md, .cursorrules)
+#     are discovered from the SESSION WORKING DIRECTORY (terminal.cwd, which
+#     server.py now points at /data/.hermes/workspace) and injected into the
+#     system prompt at session start. Seeding them into HERMES_HOME does
+#     nothing — that path is never scanned for them.
+#   - SOUL.md and other identity files are loaded from HERMES_HOME directly.
+# So we seed project-context files into the workspace dir and everything else
+# into HERMES_HOME root. Keep terminal.cwd (server.py AGENT_WORKDIR) in sync
+# with the workspace path used here.
 if [ -d /opt/hermes-agent-identity ]; then
   for f in /opt/hermes-agent-identity/*; do
     name="$(basename "$f")"
-    [ ! -f "/data/.hermes/$name" ] && cp "$f" "/data/.hermes/$name"
+    case "$name" in
+      AGENTS.md|.hermes.md|CLAUDE.md|.cursorrules)
+        dest="/data/.hermes/workspace/$name" ;;
+      *)
+        dest="/data/.hermes/$name" ;;
+    esac
+    [ ! -f "$dest" ] && cp "$f" "$dest"
   done
 fi
 

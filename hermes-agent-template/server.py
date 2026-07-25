@@ -78,6 +78,24 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 HERMES_HOME = os.environ.get("HERMES_HOME", str(Path.home() / ".hermes"))
 ENV_FILE = Path(HERMES_HOME) / ".env"
 
+# Working directory the agent starts in. Hermes discovers AGENTS.md (and other
+# project-context files) from the session's working directory at startup and
+# injects it into the system prompt — it is NOT read from HERMES_HOME (that
+# path is only scanned for SOUL.md). Two different rules pick that directory:
+#   - Gateway/cron sessions honor terminal.cwd in config.yaml.
+#   - The dashboard's embedded Chat tab is a TUI/CLI session, and the TUI
+#     ALWAYS uses its launch directory (the cwd of the hermes process),
+#     ignoring terminal.cwd. So it isn't enough to set terminal.cwd; we must
+#     also spawn `hermes gateway`/`hermes dashboard` with cwd=AGENT_WORKDIR so
+#     the pty the dashboard forks for /api/pty inherits it. Otherwise sessions
+#     launch from server.py's own cwd (`/`, the image default) and AGENTS.md
+#     at /AGENTS.md is never found.
+# We use a dedicated workspace dir (seeded with AGENTS.md by start.sh) rather
+# than HERMES_HOME itself so the agent's shell cwd stays out of the dir holding
+# auth.json, .env, and sessions.
+AGENT_WORKDIR = str(Path(HERMES_HOME) / "workspace")
+Path(AGENT_WORKDIR).mkdir(parents=True, exist_ok=True)
+
 
 def _resolve_pairing_dir() -> Path:
     """Locate the pairing store the same way hermes' get_hermes_dir() does.
@@ -517,7 +535,7 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
     merged_terminal = dict(merged.get("terminal") if isinstance(merged.get("terminal"), dict) else {})
     merged_terminal["backend"] = "local"
     merged_terminal["timeout"] = 60
-    merged_terminal["cwd"] = "/tmp"
+    merged_terminal["cwd"] = AGENT_WORKDIR
     merged["terminal"] = merged_terminal
 
     merged_agent = dict(merged.get("agent") if isinstance(merged.get("agent"), dict) else {})
@@ -687,7 +705,7 @@ def _apply_xai_oauth_config(model: str) -> None:
     merged_terminal = dict(merged.get("terminal") if isinstance(merged.get("terminal"), dict) else {})
     merged_terminal.setdefault("backend", "local")
     merged_terminal.setdefault("timeout", 60)
-    merged_terminal.setdefault("cwd", "/tmp")
+    merged_terminal.setdefault("cwd", AGENT_WORKDIR)
     merged["terminal"] = merged_terminal
 
     merged_agent = dict(merged.get("agent") if isinstance(merged.get("agent"), dict) else {})
@@ -1108,6 +1126,9 @@ class Gateway:
             # (graceful SIGTERM, escalating to SIGKILL) before claiming it.
             self.proc = await asyncio.create_subprocess_exec(
                 "hermes", "gateway", "run", "--replace",
+                # cwd is the session working dir the TUI/CLI uses for AGENTS.md
+                # discovery (it ignores terminal.cwd) — see AGENT_WORKDIR.
+                cwd=AGENT_WORKDIR,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 env=env,
@@ -1272,6 +1293,13 @@ class Dashboard:
                 # which kills this subprocess and 503s the reverse proxy. The
                 # Dockerfile still pre-builds ui-tui/dist/ (via HERMES_TUI_DIR)
                 # so the PTY child spawns instantly on first chat connect.
+                #
+                # cwd is the crucial bit for AGENTS.md: the Chat tab's PTY child
+                # is a TUI session that discovers AGENTS.md from its LAUNCH dir
+                # (it ignores terminal.cwd), and it inherits this process's cwd.
+                # Launch from AGENT_WORKDIR (seeded with AGENTS.md) so the agent
+                # loads its identity — without this it starts in `/`.
+                cwd=AGENT_WORKDIR,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 env=build_hermes_env(),
