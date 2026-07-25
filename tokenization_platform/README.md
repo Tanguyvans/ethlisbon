@@ -2,7 +2,7 @@
 
 A frontend + backend for issuing real-world-asset tokens on **Hedera Token Service (HTS)** with
 compliance controls picked as checkboxes at creation time — KYC, freeze-gating, wipe/clawback,
-pause, and (partially stubbed) World ID-gated whitelisting with liveness-based auto-reclaim.
+pause, and World ID-gated whitelisting with liveness-based auto-reclaim.
 
 Built for the ETHGlobal Lisbon 2026 Hedera track ("Tokenization on Hedera" + "No Solidity
 Allowed" — everything here is native HTS/Schedule Service via the Hedera SDK, no smart
@@ -65,7 +65,7 @@ library) prints its own deprecation notice ("will be shut down by 2026"), so it 
 | Enable wipe / clawback                 | `wipeKey`; admin `TokenWipeTransaction` (immediate reclaim)  |
 | Enable pause                           | `pauseKey`; admin `TokenPauseTransaction`                    |
 | Custom fee                             | `feeScheduleKey` + `CustomFixedFee` / `CustomFractionalFee` / `CustomRoyaltyFee` |
-| Require World ID before whitelisting   | Off-chain gate (see **World ID stub** below) on top of KYC/freeze |
+| Require World ID before whitelisting   | Server-verified World credential gate on top of KYC/freeze |
 | Liveness check-ins & auto-reclaim      | Holder-granted token allowance + long-term **Scheduled Transaction** (see below) |
 
 Whitelisting an address = granting KYC and/or unfreezing it, whichever mechanism(s) the token
@@ -97,7 +97,7 @@ Caveats (documented in code comments too):
 
 ## World ID access demo
 
-The storefront exposes five mock RWA policies and runs real World ID verification
+The storefront and each deployed token workspace run real World ID verification
 before marking their conditions as satisfied:
 
 - **Selfie Check** uses `selfieCheckLegacy` in `production`, requires fresh user
@@ -105,13 +105,14 @@ before marking their conditions as satisfied:
 - **Identity Check** uses World ID 4 in `staging`, so its `18+` and `USA`
   attribute requests can be completed through the World Simulator. The
   application only receives the attestation result, never the document data.
-- Accepted proofs are remembered only in the browser tab for the demo. No
-  payment or token purchase is performed.
+- A deployed holder is marked verified only after the server exchanges the
+  wallet-bound proof with World. Selfie and Identity timestamps are stored
+  separately so one credential cannot satisfy the other policy.
 
 Configure `NEXT_PUBLIC_WORLD_APP_ID`, `WORLD_RP_ID`,
 `WORLD_RP_SIGNING_KEY`, `WORLD_ACTION`, and `WORLD_IDENTITY_ACTION` as
-documented in `.env.example`. The legacy holder-workspace endpoint still uses
-`src/lib/worldid/mock.ts`; it is separate from the new storefront proof flow.
+documented in `.env.example`. `src/lib/worldid/mock.ts` is retained as an
+isolated development reference, but no production holder route calls it.
 
 ## Setup
 

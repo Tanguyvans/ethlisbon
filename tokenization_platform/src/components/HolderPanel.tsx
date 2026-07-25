@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import { useWallet } from "@/hooks/useWalletConnect";
 import { postJson } from "@/lib/apiClient";
 import { Badge, Button, Card, ErrorText, TextInput } from "@/components/ui";
-import type { HolderRecord, TokenRecord, TokenRequestRecord } from "@/types";
+import HolderWorldIdCheck from "@/components/HolderWorldIdCheck";
+import { hasRequiredWorldIdVerification } from "@/lib/worldid/policy";
+import type {
+  HolderRecord,
+  TokenRecord,
+  TokenRequestRecord,
+  WorldIdClientConfig,
+} from "@/types";
 
 const OPERATOR_HINT = "the token's treasury account";
 
@@ -13,10 +20,12 @@ export default function HolderPanel({
   token,
   holders,
   requests,
+  worldConfig,
 }: {
   token: TokenRecord;
   holders: HolderRecord[];
   requests: TokenRequestRecord[];
+  worldConfig: WorldIdClientConfig;
 }) {
   const { accountId, connect, connecting } = useWallet();
   const router = useRouter();
@@ -30,6 +39,7 @@ export default function HolderPanel({
     () => requests.find((request) => request.accountId === accountId) ?? null,
     [requests, accountId]
   );
+  const worldIdComplete = hasRequiredWorldIdVerification(token, holder);
 
   useEffect(() => {
     if (
@@ -99,6 +109,46 @@ export default function HolderPanel({
               <AssociateButton tokenId={token.id} accountId={accountId} onDone={() => router.refresh()} onError={setError} />
             }
           />
+          {token.compliance.worldIdSelfieCheck && (
+            <ChecklistRow
+              label="Complete World ID Selfie Check"
+              done={!!holder.worldIdSelfieVerifiedAt}
+              extra={
+                <span className="text-xs text-zinc-500">
+                  World verifies fresh presence in the official World App.
+                </span>
+              }
+              action={
+                <HolderWorldIdCheck
+                  token={token}
+                  accountId={accountId}
+                  check="selfie"
+                  done={!!holder.worldIdSelfieVerifiedAt}
+                  worldConfig={worldConfig}
+                  onDone={() => router.refresh()}
+                  onError={setError}
+                />
+              }
+            />
+          )}
+          {(token.compliance.worldIdMinimumAge != null ||
+            token.compliance.worldIdNationality != null) && (
+            <ChecklistRow
+              label={identityCheckLabel(token)}
+              done={!!holder.worldIdIdentityVerifiedAt}
+              action={
+                <HolderWorldIdCheck
+                  token={token}
+                  accountId={accountId}
+                  check="identity"
+                  done={!!holder.worldIdIdentityVerifiedAt}
+                  worldConfig={worldConfig}
+                  onDone={() => router.refresh()}
+                  onError={setError}
+                />
+              }
+            />
+          )}
           {token.tokenType === "FUNGIBLE" && (
             <ChecklistRow
               label={`Request 1 ${token.symbol}`}
@@ -107,7 +157,7 @@ export default function HolderPanel({
               action={
                 <TokenRequestAction
                   request={tokenRequest}
-                  disabled={!holder.associated || token.paused}
+                  disabled={!holder.associated || token.paused || !worldIdComplete}
                   busy={busy === "token-request"}
                   onRequest={() =>
                     run("token-request", async () => {
@@ -121,21 +171,6 @@ export default function HolderPanel({
                     })
                   }
                 />
-              }
-            />
-          )}
-          {token.compliance.worldIdRequired && (
-            <ChecklistRow
-              label="Verify with World ID (stubbed)"
-              done={!!holder.worldIdVerifiedAt}
-              action={
-                <Button
-                  variant="secondary"
-                  disabled={busy === "worldid" || !!holder.worldIdVerifiedAt}
-                  onClick={() => run("worldid", () => postJson(`/api/tokens/${token.id}/holders/${accountId}/worldid-verify`))}
-                >
-                  {busy === "worldid" ? "Verifying…" : holder.worldIdVerifiedAt ? "Verified" : "Verify"}
-                </Button>
               }
             />
           )}
@@ -189,6 +224,18 @@ export default function HolderPanel({
       {notice && <p className="text-sm text-amber-700 dark:text-amber-300">{notice}</p>}
     </Card>
   );
+}
+
+function identityCheckLabel(token: TokenRecord): string {
+  const conditions = [
+    token.compliance.worldIdMinimumAge != null
+      ? `age ${token.compliance.worldIdMinimumAge}+`
+      : null,
+    token.compliance.worldIdNationality
+      ? `nationality ${token.compliance.worldIdNationality}`
+      : null,
+  ].filter(Boolean);
+  return `Complete World ID Identity Check (${conditions.join(", ")})`;
 }
 
 function TokenRequestAction({

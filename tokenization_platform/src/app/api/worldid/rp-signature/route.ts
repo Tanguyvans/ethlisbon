@@ -4,10 +4,11 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 type VerificationFlow = "selfie" | "identity";
-type VerificationPolicy = "selfie" | "identity-age" | "identity-us";
+type VerificationPolicy = "selfie" | "identity" | "identity-age" | "identity-us";
 
 const POLICIES = new Set<VerificationPolicy>([
   "selfie",
+  "identity",
   "identity-age",
   "identity-us",
 ]);

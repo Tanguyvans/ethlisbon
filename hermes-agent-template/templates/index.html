@@ -1318,6 +1318,41 @@
           </div>
         </div>
 
+        <!-- ══ World ID credentials ══ -->
+        <div class="section-label" style="margin-top:20px;">
+          World ID
+          <span class="req-note">required for live holder checks</span>
+        </div>
+        <div class="card">
+          <p class="hint" style="margin:0 0 12px;line-height:1.55;">
+            Credentials from the World Developer Portal. The RP signing key stays server-side.
+          </p>
+          <div class="field-grid-2">
+            <div>
+              <label class="field-label">App ID</label>
+              <input type="text" :value="vars.WORLD_APP_ID||''" @input="vars.WORLD_APP_ID=$event.target.value" placeholder="app_...">
+            </div>
+            <div>
+              <label class="field-label">RP ID</label>
+              <input type="text" :value="vars.WORLD_RP_ID||''" @input="vars.WORLD_RP_ID=$event.target.value" placeholder="rp_...">
+            </div>
+          </div>
+          <div class="field-gap">
+            <label class="field-label">RP signing key</label>
+            <input type="password" :value="vars.WORLD_RP_SIGNING_KEY||''" @input="vars.WORLD_RP_SIGNING_KEY=$event.target.value" placeholder="0x...">
+          </div>
+          <div class="field-grid-2 field-gap">
+            <div>
+              <label class="field-label">Selfie action</label>
+              <input type="text" :value="vars.WORLD_ACTION||''" @input="vars.WORLD_ACTION=$event.target.value" placeholder="selfie-check-demo">
+            </div>
+            <div>
+              <label class="field-label">Identity action</label>
+              <input type="text" :value="vars.WORLD_IDENTITY_ACTION||''" @input="vars.WORLD_IDENTITY_ACTION=$event.target.value" placeholder="identity-check-demo">
+            </div>
+          </div>
+        </div>
+
       </div>
       <div class="save-bar">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-dim);cursor:pointer;">

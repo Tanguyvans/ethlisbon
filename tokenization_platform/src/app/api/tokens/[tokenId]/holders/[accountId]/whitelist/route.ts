@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ApiError, handleRoute, requireToken } from "@/lib/api/helpers";
 import { getHolder, insertEvent, updateHolder } from "@/lib/db/repo";
 import { grantKyc, unfreezeAccount } from "@/lib/hedera/tokenService";
+import { hasRequiredWorldIdVerification } from "@/lib/worldid/policy";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export async function POST(
     const holder = getHolder(tokenId, accountId);
     if (!holder) throw new ApiError("Holder has not registered for this token yet.", 404);
     if (!holder.associated) throw new ApiError("Holder must associate the token to their account first.", 409);
-    if (token.compliance.worldIdRequired && !holder.worldIdVerifiedAt) {
+    if (!hasRequiredWorldIdVerification(token, holder)) {
       throw new ApiError("This token requires World ID verification before whitelisting.", 409);
     }
 

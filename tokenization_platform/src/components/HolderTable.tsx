@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { postJson } from "@/lib/apiClient";
 import { Badge, Button, Card, ErrorText } from "@/components/ui";
 import type { HolderRecord, TokenRecord } from "@/types";
+import { hasRequiredWorldIdVerification } from "@/lib/worldid/policy";
 
 export default function HolderTable({ token, holders }: { token: TokenRecord; holders: HolderRecord[] }) {
   const router = useRouter();
@@ -56,7 +57,7 @@ export default function HolderTable({ token, holders }: { token: TokenRecord; ho
                 const canWhitelist =
                   holder.associated &&
                   holder.status !== "WHITELISTED" &&
-                  (!token.compliance.worldIdRequired || !!holder.worldIdVerifiedAt);
+                  hasRequiredWorldIdVerification(token, holder);
                 const canReclaim = token.keys.wipe || holder.allowanceGranted;
 
                 return (
@@ -66,7 +67,9 @@ export default function HolderTable({ token, holders }: { token: TokenRecord; ho
                     {token.compliance.kycRequired && <td className="py-2.5 px-2">{holder.kycGranted ? <Dot ok /> : <Dot />}</td>}
                     {token.compliance.freezeDefault && <td className="py-2.5 px-2">{holder.frozen ? <Dot /> : <Dot ok />}</td>}
                     {token.compliance.worldIdRequired && (
-                      <td className="py-2.5 px-2">{holder.worldIdVerifiedAt ? <Dot ok /> : <Dot />}</td>
+                      <td className="py-2.5 px-2">
+                        {hasRequiredWorldIdVerification(token, holder) ? <Dot ok /> : <Dot />}
+                      </td>
                     )}
                     {token.compliance.livenessEnabled && (
                       <td className="py-2.5 px-2">

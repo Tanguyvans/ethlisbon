@@ -189,6 +189,12 @@ ENV_VARS = [
     ("HEDERA_OPERATOR_ID",       "Operator account ID",      "hedera",    False),
     ("HEDERA_OPERATOR_KEY",      "Operator private key",     "hedera",    True),
     ("WALLETCONNECT_PROJECT_ID", "WalletConnect project ID", "hedera",    False),
+    # ── World ID credential verification (server-side except app id) ────────
+    ("WORLD_APP_ID",              "World App ID",              "worldid",   False),
+    ("WORLD_RP_ID",               "World RP ID",               "worldid",   False),
+    ("WORLD_RP_SIGNING_KEY",      "World RP signing key",      "worldid",   True),
+    ("WORLD_ACTION",              "Selfie action",             "worldid",   False),
+    ("WORLD_IDENTITY_ACTION",     "Identity action",           "worldid",   False),
     # ── Defaults for the next token — parameters (mirror createTokenSchema) ─
     ("TOKEN_NAME",               "Token name",               "token",     False),
     ("TOKEN_SYMBOL",             "Token symbol",             "token",     False),
@@ -657,13 +663,14 @@ def build_hermes_env() -> dict[str, str]:
 
 def write_env(path: Path, data: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    cat_order = ["model", "provider", "hedera", "token",
+    cat_order = ["model", "provider", "hedera", "worldid", "token",
                  "bedrock", "azure", "custom", "tool",
                  "telegram", "discord", "slack", "whatsapp",
                  "email", "mattermost", "matrix", "gateway", "admin"]
     cat_labels = {
         "model": "Model", "provider": "Providers",
-        "hedera": "Hedera operator", "token": "Next token defaults",
+        "hedera": "Hedera operator", "worldid": "World ID",
+        "token": "Next token defaults",
         "bedrock": "AWS Bedrock", "azure": "Azure Foundry",
         "custom": "Custom Endpoint", "tool": "Tools",
         "telegram": "Telegram", "discord": "Discord", "slack": "Slack",
@@ -1484,6 +1491,9 @@ class TokenizationApp:
             return
 
         env = os.environ.copy()
+        # Settings saved through the deployment UI live on the persistent
+        # Hermes volume rather than in Railway's immutable process environment.
+        env.update(read_env(ENV_FILE))
         env.update({
             "NODE_ENV": "production",
             "HOSTNAME": TOKENIZATION_HOST,
@@ -1541,6 +1551,10 @@ class TokenizationApp:
         except asyncio.TimeoutError:
             self.proc.kill()
             await self.proc.wait()
+
+    async def restart(self):
+        await self.stop()
+        await self.start()
 
 
 tokenization = TokenizationApp()
@@ -1734,6 +1748,9 @@ async def api_config_put(request: Request):
             # it was spawned with — a newly-saved provider key doesn't reach
             # the already-running process otherwise. See Dashboard.restart().
             asyncio.create_task(dash.restart())
+            # World ID/Hedera settings are also consumed by the standalone
+            # tokenization process, so it must receive the freshly saved env.
+            asyncio.create_task(tokenization.restart())
         resp = {"ok": True, "restarting": restart}
         if model_warning:
             resp["warning"] = model_warning

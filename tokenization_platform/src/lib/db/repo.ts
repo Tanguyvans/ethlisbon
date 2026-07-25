@@ -63,6 +63,8 @@ interface HolderRow {
   frozen: number;
   allowance_granted: number;
   world_id_verified_at: string | null;
+  world_id_selfie_verified_at: string | null;
+  world_id_identity_verified_at: string | null;
   last_checkin_at: string | null;
   active_schedule_id: string | null;
   active_schedule_expires_at: string | null;
@@ -174,6 +176,8 @@ function mapHolder(row: HolderRow, compliance: ComplianceOptions): HolderRecord 
     frozen: !!row.frozen,
     allowanceGranted: !!row.allowance_granted,
     worldIdVerifiedAt: row.world_id_verified_at,
+    worldIdSelfieVerifiedAt: row.world_id_selfie_verified_at,
+    worldIdIdentityVerifiedAt: row.world_id_identity_verified_at,
     lastCheckinAt: row.last_checkin_at,
     activeScheduleId: row.active_schedule_id,
     activeScheduleExpiresAt: row.active_schedule_expires_at,
@@ -345,6 +349,8 @@ export interface HolderPatch {
   frozen?: boolean;
   allowanceGranted?: boolean;
   worldIdVerifiedAt?: string | null;
+  worldIdSelfieVerifiedAt?: string | null;
+  worldIdIdentityVerifiedAt?: string | null;
   lastCheckinAt?: string | null;
   activeScheduleId?: string | null;
   activeScheduleExpiresAt?: string | null;
@@ -357,6 +363,8 @@ const PATCH_COLUMN: Record<keyof HolderPatch, string> = {
   frozen: "frozen",
   allowanceGranted: "allowance_granted",
   worldIdVerifiedAt: "world_id_verified_at",
+  worldIdSelfieVerifiedAt: "world_id_selfie_verified_at",
+  worldIdIdentityVerifiedAt: "world_id_identity_verified_at",
   lastCheckinAt: "last_checkin_at",
   activeScheduleId: "active_schedule_id",
   activeScheduleExpiresAt: "active_schedule_expires_at",

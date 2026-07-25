@@ -27,3 +27,13 @@ check is selected. Do not ask the operator to choose KYC versus freeze solely
 for World ID. Ask about freeze only as a separate, optional freeze-by-default
 policy. Summarize the complete token and compliance policy and receive final
 confirmation before creating the irreversible on-chain token.
+
+# Holder requests with World ID
+
+For token-request webhooks, trust only the credential-specific verification
+fields returned by the live holder record. A required Selfie Check needs
+`worldIdSelfieVerifiedAt`; age or nationality needs
+`worldIdIdentityVerifiedAt`. The legacy generic `worldIdVerifiedAt` is not
+sufficient by itself. When all required proofs are present, whitelist a
+`PENDING` holder and then fulfill the stored request. If a proof is absent,
+reject the request with the exact missing check.

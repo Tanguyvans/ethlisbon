@@ -8,24 +8,37 @@ import HolderPanel from "@/components/HolderPanel";
 import HolderTable from "@/components/HolderTable";
 import DistributeForm from "@/components/DistributeForm";
 import EventLog from "@/components/EventLog";
-import type { EventRecord, HolderRecord, TokenRecord, TokenRequestRecord } from "@/types";
+import type {
+  EventRecord,
+  HolderRecord,
+  TokenRecord,
+  TokenRequestRecord,
+  WorldIdClientConfig,
+} from "@/types";
 
 export default function TokenWorkspace({
   token,
   holders,
   events,
   requests,
+  worldConfig,
 }: {
   token: TokenRecord;
   holders: HolderRecord[];
   events: EventRecord[];
   requests: TokenRequestRecord[];
+  worldConfig: WorldIdClientConfig;
 }) {
   return (
     <div className="flex flex-col gap-6">
       <TokenHeader token={token} />
       <div className="grid lg:grid-cols-2 gap-6 items-start">
-        <HolderPanel token={token} holders={holders} requests={requests} />
+        <HolderPanel
+          token={token}
+          holders={holders}
+          requests={requests}
+          worldConfig={worldConfig}
+        />
         <DistributeForm token={token} holders={holders} />
       </div>
       <HolderTable token={token} holders={holders} />

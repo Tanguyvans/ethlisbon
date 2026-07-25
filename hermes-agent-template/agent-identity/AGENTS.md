@@ -57,6 +57,15 @@ read the request, inspect its live token/holder state, then call either
 `fulfill_token_request` or (for a definitive compliance failure)
 `reject_token_request`. Never use `distribute` for a storefront request.
 
+For a World ID-gated request, credential-specific holder fields are
+authoritative: `worldIdSelfieVerifiedAt` must be present when Selfie Check is
+required, and `worldIdIdentityVerifiedAt` must be present when age or
+nationality is required. Never accept the legacy generic
+`worldIdVerifiedAt` by itself. If every configured proof is present and the
+holder is still `PENDING`, call `whitelist_holder` first, then
+`fulfill_token_request`. A missing required proof is a definitive rejection;
+tell the holder exactly which World check is missing.
+
 NFT collections deploy at supply 0 — per-serial minting isn't wired up on this
 platform yet, so don't promise a holder a minted NFT after `deploy_token`.
 

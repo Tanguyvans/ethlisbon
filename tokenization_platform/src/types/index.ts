@@ -104,6 +104,8 @@ export interface HolderRecord {
   frozen: boolean;
   allowanceGranted: boolean;
   worldIdVerifiedAt: string | null;
+  worldIdSelfieVerifiedAt: string | null;
+  worldIdIdentityVerifiedAt: string | null;
   lastCheckinAt: string | null;
   activeScheduleId: string | null;
   activeScheduleExpiresAt: string | null;
@@ -111,6 +113,13 @@ export interface HolderRecord {
   livenessState: "DISABLED" | "OK" | "AT_RISK" | "EXPIRED";
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WorldIdClientConfig {
+  appId: string;
+  isConfigured: boolean;
+  selfieEnvironment: "production";
+  identityEnvironment: "staging";
 }
 
 export type TokenRequestStatus = "PENDING" | "PROCESSING" | "FULFILLED" | "REJECTED";

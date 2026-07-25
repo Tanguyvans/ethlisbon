@@ -15,6 +15,7 @@ import {
   transferFromTreasury,
 } from "@/lib/hedera/tokenService";
 import type { HolderRecord, TokenRecord, TokenRequestRecord } from "@/types";
+import { hasRequiredWorldIdVerification } from "@/lib/worldid/policy";
 
 export function oneDisplayTokenInBaseUnits(decimals: number): string {
   return (BigInt(10) ** BigInt(decimals)).toString();
@@ -34,7 +35,7 @@ function eligibilityProblem(token: TokenRecord, holder: HolderRecord | null): st
   if (hasWhitelistGate && holder.status !== "WHITELISTED") {
     return "The holder has not passed the token's compliance review.";
   }
-  if (token.compliance.worldIdRequired && !holder.worldIdVerifiedAt) {
+  if (!hasRequiredWorldIdVerification(token, holder)) {
     return "World ID verification is required.";
   }
   if (token.compliance.livenessEnabled) {

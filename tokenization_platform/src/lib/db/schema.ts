@@ -3,7 +3,7 @@
 // unexpected file in NFT list" build warning this used to produce.
 
 // Local application database. This never touches on-chain state directly; it mirrors/caches
-// what we did on Hedera plus off-chain compliance metadata (World ID verification stub,
+// what we did on Hedera plus off-chain compliance metadata (World ID verification,
 // liveness check-ins) that doesn't belong on the ledger.
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS tokens (
@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS holders (
   allowance_granted            INTEGER NOT NULL DEFAULT 0,   -- holder approved a token allowance to treasury (needed for scheduled auto-reclaim)
 
   world_id_verified_at          TEXT,
+  world_id_selfie_verified_at   TEXT,
+  world_id_identity_verified_at TEXT,
 
   last_checkin_at              TEXT,
   active_schedule_id            TEXT,                  -- pending Hedera ScheduleId for auto-reclaim, if any
