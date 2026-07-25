@@ -39,6 +39,7 @@ Railway Container
 │   ├── /hermes                                — Hermes dashboard entry point (cookie auth)
 │   └── /*                                      — authenticated proxy to the Hermes dashboard
 ├── Next.js Tokenization Platform  — loopback subprocess, port 3000, owns the root domain
+├── World ID MCP                    — proof verification adapter used by Hermes
 ├── Hermes dashboard                — loopback subprocess, port 9119
 └── Hermes gateway                  — managed async subprocess (the agent itself)
 ```

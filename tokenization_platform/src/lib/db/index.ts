@@ -25,8 +25,30 @@ function openDb(): Database.Database {
   db.exec(SCHEMA_SQL);
   migrateTokenCompliancePolicy(db);
   migrateHolderWorldIdProofs(db);
+  migrateWorldIdVerificationQueue(db);
 
   return db;
+}
+
+/** Keep the proof retention deadline present if a database was created by an earlier build. */
+function migrateWorldIdVerificationQueue(db: Database.Database): void {
+  const table = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'world_id_verifications'")
+    .get();
+  if (!table) return;
+  const columns = new Set(
+    (db.pragma("table_info(world_id_verifications)") as Array<{ name: string }>).map(
+      (column) => column.name
+    )
+  );
+  if (!columns.has("expires_at")) {
+    db.exec("ALTER TABLE world_id_verifications ADD COLUMN expires_at TEXT");
+  }
+  db.exec(`
+    UPDATE world_id_verifications
+    SET expires_at = datetime(created_at, '+30 minutes')
+    WHERE expires_at IS NULL
+  `);
 }
 
 /** Keep credential-specific proof state separate. A legacy mocked timestamp must never

@@ -9,6 +9,7 @@ import {
 import { triggerHermesTokenRequest } from "@/lib/hermes/tokenRequestWebhook";
 import { oneDisplayTokenInBaseUnits } from "@/lib/tokenRequests";
 import { createTokenRequestSchema } from "@/lib/validation";
+import { hasRequiredWorldIdSubmission } from "@/lib/worldid/policy";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ tokenId
     const holder = getHolder(tokenId, accountId);
     if (!holder) throw new ApiError("Join this token before requesting it.", 409);
     if (!holder.associated) throw new ApiError("Associate this token with your wallet first.", 409);
+    if (!hasRequiredWorldIdSubmission(token, holder)) {
+      throw new ApiError("Complete every required World ID check before asking Hermes to review.", 409);
+    }
 
     const { request, started, created } = createOrReopenTokenRequest(
       tokenId,

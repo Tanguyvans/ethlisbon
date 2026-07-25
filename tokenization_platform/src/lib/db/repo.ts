@@ -13,6 +13,9 @@ import type {
   TokenType,
   SupplyType,
   AssetCategory,
+  WorldIdCheckKind,
+  WorldIdVerificationRecord,
+  WorldIdVerificationStatus,
 } from "@/types";
 import { hashscanTokenUrl } from "@/lib/hedera/format";
 
@@ -100,6 +103,25 @@ interface TokenRequestRow {
   updated_at: string;
 }
 
+interface WorldIdVerificationRow {
+  id: number;
+  token_id: string;
+  account_id: string;
+  check_kind: string;
+  status: string;
+  action: string;
+  expected_signal: string;
+  proof_json: string | null;
+  credential: string | null;
+  nullifier_hash: string | null;
+  error_code: string | null;
+  error_detail: string | null;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+  verified_at: string | null;
+}
+
 function mapToken(row: TokenRow): TokenRecord {
   // Tokens created before the detailed policy migration only stored a generic World ID flag.
   // Preserve their former behaviour by treating that legacy flag as Selfie Check.
@@ -178,6 +200,16 @@ function mapHolder(row: HolderRow, compliance: ComplianceOptions): HolderRecord 
     worldIdVerifiedAt: row.world_id_verified_at,
     worldIdSelfieVerifiedAt: row.world_id_selfie_verified_at,
     worldIdIdentityVerifiedAt: row.world_id_identity_verified_at,
+    worldIdSelfieVerification: getLatestWorldIdVerification(
+      row.token_id,
+      row.account_id,
+      "selfie"
+    ),
+    worldIdIdentityVerification: getLatestWorldIdVerification(
+      row.token_id,
+      row.account_id,
+      "identity"
+    ),
     lastCheckinAt: row.last_checkin_at,
     activeScheduleId: row.active_schedule_id,
     activeScheduleExpiresAt: row.active_schedule_expires_at,
@@ -216,6 +248,26 @@ function mapTokenRequest(row: TokenRequestRow): TokenRequestRecord {
     fulfillmentHashscanUrl: row.fulfillment_hashscan_url,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function mapWorldIdVerification(row: WorldIdVerificationRow): WorldIdVerificationRecord {
+  return {
+    id: row.id,
+    tokenId: row.token_id,
+    accountId: row.account_id,
+    check: row.check_kind as WorldIdCheckKind,
+    status: row.status as WorldIdVerificationStatus,
+    action: row.action,
+    expectedSignal: row.expected_signal,
+    credential: row.credential,
+    nullifierHash: row.nullifier_hash,
+    errorCode: row.error_code,
+    errorDetail: row.error_detail,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    expiresAt: row.expires_at,
+    verifiedAt: row.verified_at,
   };
 }
 
@@ -512,6 +564,200 @@ export function rejectPendingTokenRequest(id: number, reason: string): TokenRequ
     )
     .run(reason, id);
   return result.changes === 1 ? getTokenRequest(id) : null;
+}
+
+// --- World ID proof queue (browser -> server -> World ID MCP -> World API) ---
+
+export function createWorldIdVerification(params: {
+  tokenId: string;
+  accountId: string;
+  check: WorldIdCheckKind;
+  action: string;
+  expectedSignal: string;
+  proofJson: string;
+}): WorldIdVerificationRecord {
+  const db = getDb();
+  expireWorldIdVerifications();
+  const insert = db.transaction(() => {
+    // A newly submitted proof supersedes older unprocessed attempts. Their raw proof is erased
+    // immediately so the persistent volume never accumulates abandoned World payloads.
+    db.prepare(
+      `UPDATE world_id_verifications
+       SET status = 'REJECTED', proof_json = NULL, error_code = 'superseded',
+           error_detail = 'A newer proof was submitted.', updated_at = datetime('now')
+       WHERE token_id = ? AND account_id = ? AND check_kind = ?
+         AND status IN ('PENDING', 'FAILED')`
+    ).run(params.tokenId, params.accountId, params.check);
+
+    return db.prepare(
+      `INSERT INTO world_id_verifications (
+         token_id, account_id, check_kind, action, expected_signal, proof_json
+       ) VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(
+      params.tokenId,
+      params.accountId,
+      params.check,
+      params.action,
+      params.expectedSignal,
+      params.proofJson
+    ).lastInsertRowid;
+  });
+
+  return getWorldIdVerification(Number(insert()))!;
+}
+
+export function getWorldIdVerification(id: number): WorldIdVerificationRecord | null {
+  expireWorldIdVerifications();
+  const row = getDb()
+    .prepare("SELECT * FROM world_id_verifications WHERE id = ?")
+    .get(id) as WorldIdVerificationRow | undefined;
+  return row ? mapWorldIdVerification(row) : null;
+}
+
+/** Server-only proof access for the verification executor. Never serialize this return value. */
+export function getWorldIdVerificationProof(id: number): {
+  verification: WorldIdVerificationRecord;
+  proof: unknown;
+} | null {
+  expireWorldIdVerifications();
+  const row = getDb()
+    .prepare("SELECT * FROM world_id_verifications WHERE id = ?")
+    .get(id) as WorldIdVerificationRow | undefined;
+  if (!row) return null;
+  if (!row.proof_json) return { verification: mapWorldIdVerification(row), proof: null };
+  return { verification: mapWorldIdVerification(row), proof: JSON.parse(row.proof_json) as unknown };
+}
+
+export function getLatestWorldIdVerification(
+  tokenId: string,
+  accountId: string,
+  check: WorldIdCheckKind
+): WorldIdVerificationRecord | null {
+  expireWorldIdVerifications();
+  const row = getDb()
+    .prepare(
+      `SELECT * FROM world_id_verifications
+       WHERE token_id = ? AND account_id = ? AND check_kind = ?
+       ORDER BY id DESC LIMIT 1`
+    )
+    .get(tokenId, accountId, check) as WorldIdVerificationRow | undefined;
+  return row ? mapWorldIdVerification(row) : null;
+}
+
+export function listWorldIdVerifications(filters: {
+  status?: WorldIdVerificationStatus;
+  tokenId?: string;
+  accountId?: string;
+} = {}): WorldIdVerificationRecord[] {
+  expireWorldIdVerifications();
+  const clauses: string[] = [];
+  const values: string[] = [];
+  if (filters.status) {
+    clauses.push("status = ?");
+    values.push(filters.status);
+  }
+  if (filters.tokenId) {
+    clauses.push("token_id = ?");
+    values.push(filters.tokenId);
+  }
+  if (filters.accountId) {
+    clauses.push("account_id = ?");
+    values.push(filters.accountId);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  const rows = getDb()
+    .prepare(`SELECT * FROM world_id_verifications ${where} ORDER BY created_at ASC, id ASC`)
+    .all(...values) as WorldIdVerificationRow[];
+  return rows.map(mapWorldIdVerification);
+}
+
+/** Atomically reserve a proof so concurrent agent runs cannot call World twice. */
+export function claimWorldIdVerification(id: number): WorldIdVerificationRecord | null {
+  expireWorldIdVerifications();
+  const result = getDb()
+    .prepare(
+      `UPDATE world_id_verifications
+       SET status = 'PROCESSING', error_code = NULL, error_detail = NULL,
+           updated_at = datetime('now')
+       WHERE id = ? AND status IN ('PENDING', 'FAILED') AND proof_json IS NOT NULL`
+    )
+    .run(id);
+  return result.changes === 1 ? getWorldIdVerification(id) : null;
+}
+
+/** Erase abandoned raw proofs. A normal proof gets 30 minutes to reach Hermes; a process that
+ * crashed mid-call is retained for one hour for diagnosis, then purged as well. */
+function expireWorldIdVerifications(): void {
+  getDb().prepare(
+    `UPDATE world_id_verifications
+     SET status = 'REJECTED', proof_json = NULL, error_code = 'proof_expired',
+         error_detail = 'The queued proof expired before verification.',
+         updated_at = datetime('now')
+     WHERE proof_json IS NOT NULL
+       AND (
+         (status IN ('PENDING', 'FAILED') AND expires_at <= datetime('now'))
+         OR (status = 'PROCESSING' AND updated_at <= datetime('now', '-1 hour'))
+       )`
+  ).run();
+}
+
+export function failWorldIdVerification(
+  id: number,
+  errorCode: string,
+  errorDetail: string,
+  definitive: boolean
+): WorldIdVerificationRecord | null {
+  getDb()
+    .prepare(
+      `UPDATE world_id_verifications
+       SET status = ?, proof_json = CASE WHEN ? THEN NULL ELSE proof_json END,
+           error_code = ?, error_detail = ?, updated_at = datetime('now')
+       WHERE id = ?`
+    )
+    .run(definitive ? "REJECTED" : "FAILED", definitive ? 1 : 0, errorCode, errorDetail, id);
+  return getWorldIdVerification(id);
+}
+
+/** Save the trusted World result and erase the raw proof. Returns false for local replay. */
+export function completeWorldIdVerification(
+  id: number,
+  credential: string,
+  nullifierHash: string,
+  verifiedAt: string
+): boolean {
+  const db = getDb();
+  return db.transaction(() => {
+    const current = db
+      .prepare("SELECT action FROM world_id_verifications WHERE id = ?")
+      .get(id) as { action: string } | undefined;
+    if (!current) return false;
+
+    const replay = db
+      .prepare(
+        `SELECT id FROM world_id_verifications
+         WHERE action = ? AND nullifier_hash = ? AND id != ? LIMIT 1`
+      )
+      .get(current.action, nullifierHash, id) as { id: number } | undefined;
+    if (replay) {
+      db.prepare(
+        `UPDATE world_id_verifications
+         SET status = 'REJECTED', proof_json = NULL, error_code = 'nullifier_replayed',
+             error_detail = 'This World ID proof was already used for this action.',
+             updated_at = datetime('now')
+         WHERE id = ?`
+      ).run(id);
+      return false;
+    }
+
+    const result = db.prepare(
+      `UPDATE world_id_verifications
+       SET status = 'VERIFIED', proof_json = NULL, credential = ?, nullifier_hash = ?,
+           error_code = NULL, error_detail = NULL, verified_at = ?,
+           updated_at = datetime('now')
+       WHERE id = ? AND status = 'PROCESSING'`
+    ).run(credential, nullifierHash, verifiedAt, id);
+    return result.changes === 1;
+  })();
 }
 
 // --- events (audit trail shown in the UI) ---

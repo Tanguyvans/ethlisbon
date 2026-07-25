@@ -30,10 +30,13 @@ confirmation before creating the irreversible on-chain token.
 
 # Holder requests with World ID
 
-For token-request webhooks, trust only the credential-specific verification
-fields returned by the live holder record. A required Selfie Check needs
+For token-request webhooks, inspect queued attempts with the separate `worldid`
+MCP. When a required credential-specific timestamp is absent, call
+`verify_pending_proof` on the newest `PENDING` or retryable `FAILED` attempt,
+then re-read the live holder. A required Selfie Check needs
 `worldIdSelfieVerifiedAt`; age or nationality needs
 `worldIdIdentityVerifiedAt`. The legacy generic `worldIdVerifiedAt` is not
-sufficient by itself. When all required proofs are present, whitelist a
-`PENDING` holder and then fulfill the stored request. If a proof is absent,
-reject the request with the exact missing check.
+sufficient by itself. Never ask for or accept proof JSON in chat. When all
+required proofs are present, whitelist a `PENDING` holder and fulfill the
+stored request. Reject only a definitive World failure; transient provider or
+network failures remain pending.

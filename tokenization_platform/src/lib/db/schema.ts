@@ -104,8 +104,39 @@ CREATE TABLE IF NOT EXISTS token_requests (
   UNIQUE (token_id, account_id)
 );
 
+-- Raw IDKit results are held only while an agent-triggered World verification is pending.
+-- They are cleared after a definitive result. The sanitized fields are safe to expose through
+-- the World ID MCP; proof_json is intentionally never returned by repository read methods.
+CREATE TABLE IF NOT EXISTS world_id_verifications (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  token_id          TEXT NOT NULL,
+  account_id        TEXT NOT NULL,
+  check_kind        TEXT NOT NULL,       -- selfie | identity
+  status            TEXT NOT NULL DEFAULT 'PENDING',
+  action            TEXT NOT NULL,
+  expected_signal   TEXT NOT NULL,
+  proof_json        TEXT,
+  credential        TEXT,
+  nullifier_hash    TEXT,
+  error_code        TEXT,
+  error_detail      TEXT,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at        TEXT NOT NULL DEFAULT (datetime('now', '+30 minutes')),
+  verified_at       TEXT,
+  FOREIGN KEY (token_id, account_id)
+    REFERENCES holders(token_id, account_id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_holders_token ON holders(token_id);
 CREATE INDEX IF NOT EXISTS idx_events_token ON events(token_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_token_requests_status ON token_requests(status, created_at ASC);
 CREATE INDEX IF NOT EXISTS idx_token_requests_token ON token_requests(token_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_world_id_verifications_status
+  ON world_id_verifications(status, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_world_id_verifications_holder
+  ON world_id_verifications(token_id, account_id, check_kind, id DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_world_id_verifications_nullifier
+  ON world_id_verifications(action, nullifier_hash)
+  WHERE nullifier_hash IS NOT NULL;
 `;

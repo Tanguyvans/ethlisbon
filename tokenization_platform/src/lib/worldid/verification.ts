@@ -42,6 +42,12 @@ export class WorldProofError extends Error {
   }
 }
 
+export function expectedWorldAction(check: "selfie" | "identity"): string {
+  return check === "selfie"
+    ? process.env.WORLD_ACTION ?? "selfie-check-demo"
+    : process.env.WORLD_IDENTITY_ACTION ?? "identity-check-demo";
+}
+
 export function getWorldError(payload: WorldVerificationResponse) {
   const failedResult = payload.results?.find((result) => !result.success);
   return {
@@ -120,7 +126,7 @@ export async function verifySelfieCredential(
   expectedSignal?: string
 ): Promise<{ nullifier: string; credential: string }> {
   const rpId = requireConfiguration();
-  const action = process.env.WORLD_ACTION ?? "selfie-check-demo";
+  const action = expectedWorldAction("selfie");
   const result = readResult(value);
 
   if (result.environment !== "production") {
@@ -152,7 +158,7 @@ export async function verifySelfieCredential(
     const worldError = getWorldError(payload);
     throw new WorldProofError(
       "World rejected the Selfie Check proof.",
-      400,
+      response.status >= 500 ? 502 : 400,
       worldError.code,
       worldError.details
     );
@@ -195,7 +201,7 @@ export async function verifyIdentityCredential(
   expectedSignal?: string
 ): Promise<{ nullifier: string; credential: string }> {
   const rpId = requireConfiguration();
-  const action = process.env.WORLD_IDENTITY_ACTION ?? "identity-check-demo";
+  const action = expectedWorldAction("identity");
   const result = readResult(value);
 
   if (result.action !== action) {
@@ -234,7 +240,7 @@ export async function verifyIdentityCredential(
     const worldError = getWorldError(payload);
     throw new WorldProofError(
       "World rejected the Identity Check proof.",
-      400,
+      response.status >= 500 ? 502 : 400,
       worldError.code,
       worldError.details
     );

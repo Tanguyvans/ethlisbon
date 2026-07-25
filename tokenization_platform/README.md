@@ -44,6 +44,7 @@ src/
     db/                         better-sqlite3 (schema in schema.ts, queries in repo.ts)
     walletconnect/connector.ts  browser DAppConnector singleton
     worldid/verification.ts     shared World verification API client
+    worldid/pendingVerification.ts agent-triggered proof queue executor
     validation.ts               zod schemas for every API route
   types/index.ts                shared domain types
 ```
@@ -97,17 +98,23 @@ Caveats (documented in code comments too):
 
 ## World ID access demo
 
-The storefront and each deployed token workspace run real World ID verification
-before marking their conditions as satisfied:
+The storefront and each deployed token workspace use real World ID proofs. For
+holder token requests, verification is an explicit Hermes decision through the
+separate `worldid` MCP:
 
 - **Selfie Check** uses `selfieCheckLegacy` in `production`, requires fresh user
   presence, and verifies the Face proof through World API v4.
 - **Identity Check** uses World ID 4 in `staging`, so its `18+` and `USA`
   attribute requests can be completed through the World Simulator. The
   application only receives the attestation result, never the document data.
-- A deployed holder is marked verified only after the server exchanges the
-  wallet-bound proof with World. Selfie and Identity timestamps are stored
-  separately so one credential cannot satisfy the other policy.
+- The browser submits a wallet-bound proof to a short-lived server queue. It is
+  never exposed to the LLM or returned through MCP tools.
+- When the holder requests a token, Hermes calls `verify_pending_proof`; the
+  trusted Next.js backend exchanges the queued payload with World, stores a
+  replay-protected nullifier hash, and erases the raw proof.
+- A holder is marked verified only after that World response succeeds. Selfie
+  and Identity timestamps remain separate so one credential cannot satisfy the
+  other policy. Abandoned raw proofs expire after 30 minutes.
 
 Configure `NEXT_PUBLIC_WORLD_APP_ID`, `WORLD_RP_ID`,
 `WORLD_RP_SIGNING_KEY`, `WORLD_ACTION`, and `WORLD_IDENTITY_ACTION` as

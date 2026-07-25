@@ -567,8 +567,8 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
 
     merged["data_dir"] = HERMES_HOME
 
-    # Seed/update only the deployment-managed parts of the Hedera MCP entry.
-    # Other MCP servers and optional keys on this entry remain untouched.
+    # Seed/update only the deployment-managed parts of the Hedera and World ID MCP entries.
+    # Other MCP servers and optional keys on these entries remain untouched.
     mcp_servers = merged.get("mcp_servers")
     if not isinstance(mcp_servers, dict):
         mcp_servers = {}
@@ -584,6 +584,19 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
     hedera_env["TOKENIZATION_AGENT_SECRET"] = TOKENIZATION_AGENT_SECRET
     hedera_mcp["env"] = hedera_env
     mcp_servers["hedera"] = hedera_mcp
+
+    worldid_mcp = mcp_servers.get("worldid")
+    if not isinstance(worldid_mcp, dict):
+        worldid_mcp = {}
+    worldid_mcp.setdefault("command", "python")
+    worldid_mcp.setdefault("args", ["/app/worldid_mcp.py"])
+    worldid_env = worldid_mcp.get("env")
+    if not isinstance(worldid_env, dict):
+        worldid_env = {}
+    worldid_env["TOKENIZATION_BASE_URL"] = TOKENIZATION_URL
+    worldid_env["TOKENIZATION_AGENT_SECRET"] = TOKENIZATION_AGENT_SECRET
+    worldid_mcp["env"] = worldid_env
+    mcp_servers["worldid"] = worldid_mcp
     merged["mcp_servers"] = mcp_servers
 
     # The storefront POSTs a signed event here after committing a request to
@@ -612,10 +625,13 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
             "A holder submitted stored token request #{request_id}. "
             "Use the hedera MCP get_token_request tool with request_id={request_id}, "
             "then inspect the referenced token and holder using get_token. "
-            "For a World ID-gated token, verify the credential-specific fields: "
-            "worldIdSelfieVerifiedAt is mandatory when Selfie Check is required, and "
-            "worldIdIdentityVerifiedAt is mandatory when age or nationality is required; "
-            "the generic worldIdVerifiedAt field alone is never sufficient. "
+            "For a World ID-gated token, use the worldid MCP get_holder_verifications tool. "
+            "For each configured check whose credential-specific holder timestamp is missing, "
+            "call worldid verify_pending_proof with the newest PENDING or FAILED verification id, "
+            "then re-read the live token and holder using hedera get_token. "
+            "worldIdSelfieVerifiedAt is mandatory when Selfie Check is required; "
+            "worldIdIdentityVerifiedAt is mandatory when age or nationality is required. "
+            "Never accept the generic worldIdVerifiedAt alone and never ask for proof JSON in chat. "
             "If every configured World ID proof is present but the holder status is PENDING, "
             "you MUST call whitelist_holder for the request's token and account, re-read the "
             "live holder, then call fulfill_token_request with this request id. Do not treat "

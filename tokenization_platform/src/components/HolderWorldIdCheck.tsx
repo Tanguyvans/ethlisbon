@@ -14,7 +14,11 @@ import { Button } from "@/components/ui";
 import { postJson } from "@/lib/apiClient";
 import { withTokenizationBasePath } from "@/lib/paths";
 import { worldIdHolderSignal } from "@/lib/worldid/policy";
-import type { TokenRecord, WorldIdClientConfig } from "@/types";
+import type {
+  TokenRecord,
+  WorldIdClientConfig,
+  WorldIdVerificationRecord,
+} from "@/types";
 
 type CheckKind = "selfie" | "identity";
 type SignatureResponse = RpContext & { action: string };
@@ -25,6 +29,7 @@ export default function HolderWorldIdCheck({
   accountId,
   check,
   done,
+  pendingVerification,
   worldConfig,
   onDone,
   onError,
@@ -33,6 +38,7 @@ export default function HolderWorldIdCheck({
   accountId: string;
   check: CheckKind;
   done: boolean;
+  pendingVerification: WorldIdVerificationRecord | null;
   worldConfig: WorldIdClientConfig;
   onDone: () => void;
   onError: (message: string) => void;
@@ -45,6 +51,10 @@ export default function HolderWorldIdCheck({
   } | null>(null);
   const serverError = useRef<string | null>(null);
   const signal = worldIdHolderSignal(token.id, accountId);
+  const submitted =
+    pendingVerification?.status === "PENDING" ||
+    pendingVerification?.status === "PROCESSING" ||
+    pendingVerification?.status === "FAILED";
 
   const preset = useMemo<Preset>(() => {
     if (check === "selfie") return selfieCheckLegacy({ signal });
@@ -98,12 +108,16 @@ export default function HolderWorldIdCheck({
     <>
       <Button
         variant="secondary"
-        disabled={done || preparing || !worldConfig.isConfigured}
+        disabled={done || submitted || preparing || !worldConfig.isConfigured}
         onClick={startVerification}
         title={!worldConfig.isConfigured ? "World ID credentials are not configured." : undefined}
       >
         {done
           ? "Verified"
+          : pendingVerification?.status === "PROCESSING"
+            ? "Hermes verifying…"
+            : submitted
+              ? "Ready for Hermes"
           : preparing
             ? "Preparing…"
             : !worldConfig.isConfigured

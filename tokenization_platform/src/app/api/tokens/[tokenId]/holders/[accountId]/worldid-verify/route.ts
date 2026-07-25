@@ -1,18 +1,17 @@
-import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { ApiError, handleRoute, readJson, requireToken } from "@/lib/api/helpers";
-import { getHolder, insertEvent, updateHolder } from "@/lib/db/repo";
-import { worldIdHolderSignal } from "@/lib/worldid/policy";
 import {
-  verifyIdentityCredential,
-  verifySelfieCredential,
-  WorldProofError,
-} from "@/lib/worldid/verification";
+  createWorldIdVerification,
+  getHolder,
+} from "@/lib/db/repo";
+import { worldIdHolderSignal } from "@/lib/worldid/policy";
+import { expectedWorldAction } from "@/lib/worldid/verification";
+import type { WorldIdCheckKind } from "@/types";
 
 export const dynamic = "force-dynamic";
 
 type VerificationBody = {
-  check?: "selfie" | "identity";
+  check?: WorldIdCheckKind;
   result?: unknown;
 };
 
@@ -30,7 +29,9 @@ export async function POST(
     }
 
     const { check, result } = await readJson<VerificationBody>(req);
-    if (!check || !result) throw new ApiError("Missing World ID proof.", 400);
+    if ((check !== "selfie" && check !== "identity") || !result) {
+      throw new ApiError("Missing World ID proof.", 400);
+    }
 
     const identityRequired =
       token.compliance.worldIdMinimumAge != null ||
@@ -41,56 +42,40 @@ export async function POST(
     if (check === "identity" && !identityRequired) {
       throw new ApiError("This token does not require Identity Check.", 409);
     }
-
-    const signal = worldIdHolderSignal(tokenId, accountId);
-    let verification: { nullifier: string; credential: string };
-    try {
-      verification =
-        check === "selfie"
-          ? await verifySelfieCredential(result, signal)
-          : await verifyIdentityCredential(result, signal);
-    } catch (error) {
-      if (error instanceof WorldProofError) {
-        throw new ApiError(
-          [error.message, error.code, error.details].filter(Boolean).join(" · "),
-          error.status
-        );
-      }
-      throw error;
+    if (
+      (check === "selfie" && holder.worldIdSelfieVerifiedAt) ||
+      (check === "identity" && holder.worldIdIdentityVerifiedAt)
+    ) {
+      throw new ApiError("This World ID check is already verified.", 409);
     }
 
-    const verifiedAt = new Date().toISOString();
-    const selfieVerifiedAt =
-      check === "selfie" ? verifiedAt : holder.worldIdSelfieVerifiedAt;
-    const identityVerifiedAt =
-      check === "identity" ? verifiedAt : holder.worldIdIdentityVerifiedAt;
-    const allRequiredChecksPassed =
-      (!token.compliance.worldIdSelfieCheck || !!selfieVerifiedAt) &&
-      (!identityRequired || !!identityVerifiedAt);
+    let proofJson: string;
+    try {
+      proofJson = JSON.stringify(result);
+    } catch {
+      throw new ApiError("The World ID proof could not be serialized.", 400);
+    }
+    if (!proofJson || proofJson.length > 128_000) {
+      throw new ApiError("The World ID proof is empty or too large.", 413);
+    }
 
-    updateHolder(tokenId, accountId, {
-      worldIdSelfieVerifiedAt: selfieVerifiedAt,
-      worldIdIdentityVerifiedAt: identityVerifiedAt,
-      worldIdVerifiedAt: allRequiredChecksPassed ? verifiedAt : null,
-    });
-    insertEvent({
+    const verification = createWorldIdVerification({
       tokenId,
       accountId,
-      type: "WORLDID_VERIFY",
-      detail: {
-        check,
-        credential: verification.credential,
-        provider: "World ID",
-        nullifierHash: createHash("sha256").update(verification.nullifier).digest("hex"),
-      },
+      check,
+      action: expectedWorldAction(check),
+      expectedSignal: worldIdHolderSignal(tokenId, accountId),
+      proofJson,
     });
 
-    return NextResponse.json({
-      success: true,
-      check,
-      verifiedAt,
-      allRequiredChecksPassed,
-      holder: getHolder(tokenId, accountId),
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        submitted: true,
+        message: "Proof stored securely. Hermes will verify it with World before sending tokens.",
+        verification,
+      },
+      { status: 202 }
+    );
   });
 }

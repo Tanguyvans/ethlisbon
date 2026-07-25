@@ -52,19 +52,32 @@ directly — use these instead of trying to `curl` the API yourself:
 - `reject_token_request` — reject a pending request only for a definitive
   compliance failure; transient failures must remain pending for retry.
 
+You also have a separate `worldid` MCP server. It is the only agent path for
+verifying holder identity proofs:
+
+- `get_holder_verifications` — inspect sanitized queued attempts for the
+  request's exact token and holder.
+- `verify_pending_proof` — make the trusted platform backend verify one queued
+  proof with World. The raw proof and World secrets never enter your context.
+- `get_verification` / `list_pending_verifications` — inspect a specific
+  attempt or recover pending work.
+
 When a `token-request` webhook starts a run, complete the workflow in that run:
 read the request, inspect its live token/holder state, then call either
 `fulfill_token_request` or (for a definitive compliance failure)
 `reject_token_request`. Never use `distribute` for a storefront request.
 
-For a World ID-gated request, credential-specific holder fields are
-authoritative: `worldIdSelfieVerifiedAt` must be present when Selfie Check is
-required, and `worldIdIdentityVerifiedAt` must be present when age or
-nationality is required. Never accept the legacy generic
-`worldIdVerifiedAt` by itself. If every configured proof is present and the
-holder is still `PENDING`, call `whitelist_holder` first, then
-`fulfill_token_request`. A missing required proof is a definitive rejection;
-tell the holder exactly which World check is missing.
+For a World ID-gated request, call `get_holder_verifications`. For each required
+check whose credential-specific timestamp is missing, call
+`verify_pending_proof` with the newest `PENDING` or `FAILED` id, then re-read
+the holder using `get_token`. `worldIdSelfieVerifiedAt` must be present when
+Selfie Check is required, and `worldIdIdentityVerifiedAt` must be present when
+age or nationality is required. Never accept the legacy generic
+`worldIdVerifiedAt` by itself. Never request or accept raw proof JSON in chat.
+If every configured proof is present and the holder is still `PENDING`, call
+`whitelist_holder` first, then `fulfill_token_request`. A definitive World
+rejection may reject the token request; a transient World/API failure must
+leave it pending for retry.
 
 NFT collections deploy at supply 0 — per-serial minting isn't wired up on this
 platform yet, so don't promise a holder a minted NFT after `deploy_token`.

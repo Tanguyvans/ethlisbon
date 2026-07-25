@@ -6,11 +6,12 @@ import { useWallet } from "@/hooks/useWalletConnect";
 import { postJson } from "@/lib/apiClient";
 import { Badge, Button, Card, ErrorText, TextInput } from "@/components/ui";
 import HolderWorldIdCheck from "@/components/HolderWorldIdCheck";
-import { hasRequiredWorldIdVerification } from "@/lib/worldid/policy";
+import { hasRequiredWorldIdSubmission } from "@/lib/worldid/policy";
 import type {
   HolderRecord,
   TokenRecord,
   TokenRequestRecord,
+  WorldIdVerificationRecord,
   WorldIdClientConfig,
 } from "@/types";
 
@@ -39,7 +40,7 @@ export default function HolderPanel({
     () => requests.find((request) => request.accountId === accountId) ?? null,
     [requests, accountId]
   );
-  const worldIdComplete = hasRequiredWorldIdVerification(token, holder);
+  const worldIdReadyForHermes = hasRequiredWorldIdSubmission(token, holder);
 
   useEffect(() => {
     if (
@@ -114,9 +115,10 @@ export default function HolderPanel({
               label="Complete World ID Selfie Check"
               done={!!holder.worldIdSelfieVerifiedAt}
               extra={
-                <span className="text-xs text-zinc-500">
-                  World verifies fresh presence in the official World App.
-                </span>
+                <WorldIdVerificationNote
+                  verification={holder.worldIdSelfieVerification}
+                  fallback="World verifies fresh presence in the official World App."
+                />
               }
               action={
                 <HolderWorldIdCheck
@@ -124,6 +126,7 @@ export default function HolderPanel({
                   accountId={accountId}
                   check="selfie"
                   done={!!holder.worldIdSelfieVerifiedAt}
+                  pendingVerification={holder.worldIdSelfieVerification}
                   worldConfig={worldConfig}
                   onDone={() => router.refresh()}
                   onError={setError}
@@ -136,12 +139,19 @@ export default function HolderPanel({
             <ChecklistRow
               label={identityCheckLabel(token)}
               done={!!holder.worldIdIdentityVerifiedAt}
+              extra={
+                <WorldIdVerificationNote
+                  verification={holder.worldIdIdentityVerification}
+                  fallback="Hermes verifies the requested attributes with World."
+                />
+              }
               action={
                 <HolderWorldIdCheck
                   token={token}
                   accountId={accountId}
                   check="identity"
                   done={!!holder.worldIdIdentityVerifiedAt}
+                  pendingVerification={holder.worldIdIdentityVerification}
                   worldConfig={worldConfig}
                   onDone={() => router.refresh()}
                   onError={setError}
@@ -157,7 +167,7 @@ export default function HolderPanel({
               action={
                 <TokenRequestAction
                   request={tokenRequest}
-                  disabled={!holder.associated || token.paused || !worldIdComplete}
+                  disabled={!holder.associated || token.paused || !worldIdReadyForHermes}
                   busy={busy === "token-request"}
                   onRequest={() =>
                     run("token-request", async () => {
@@ -224,6 +234,37 @@ export default function HolderPanel({
       {notice && <p className="text-sm text-amber-700 dark:text-amber-300">{notice}</p>}
     </Card>
   );
+}
+
+function WorldIdVerificationNote({
+  verification,
+  fallback,
+}: {
+  verification: WorldIdVerificationRecord | null;
+  fallback: string;
+}) {
+  if (!verification) return <span className="text-xs text-zinc-500">{fallback}</span>;
+  if (verification.status === "PENDING") {
+    return <span className="text-xs text-violet-700">Proof ready for Hermes verification.</span>;
+  }
+  if (verification.status === "PROCESSING") {
+    return <span className="text-xs text-violet-700">Hermes is checking this proof with World…</span>;
+  }
+  if (verification.status === "FAILED") {
+    return (
+      <span className="text-xs text-amber-700">
+        World was temporarily unavailable. Hermes can retry this proof.
+      </span>
+    );
+  }
+  if (verification.status === "REJECTED") {
+    return (
+      <span className="text-xs text-red-600">
+        {verification.errorDetail ?? "World rejected this proof. Please complete a new check."}
+      </span>
+    );
+  }
+  return <span className="text-xs text-emerald-700">Verified by Hermes through World.</span>;
 }
 
 function identityCheckLabel(token: TokenRecord): string {

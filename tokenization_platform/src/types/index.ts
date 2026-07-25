@@ -106,6 +106,8 @@ export interface HolderRecord {
   worldIdVerifiedAt: string | null;
   worldIdSelfieVerifiedAt: string | null;
   worldIdIdentityVerifiedAt: string | null;
+  worldIdSelfieVerification: WorldIdVerificationRecord | null;
+  worldIdIdentityVerification: WorldIdVerificationRecord | null;
   lastCheckinAt: string | null;
   activeScheduleId: string | null;
   activeScheduleExpiresAt: string | null;
@@ -113,6 +115,34 @@ export interface HolderRecord {
   livenessState: "DISABLED" | "OK" | "AT_RISK" | "EXPIRED";
   createdAt: string;
   updatedAt: string;
+}
+
+export type WorldIdCheckKind = "selfie" | "identity";
+export type WorldIdVerificationStatus =
+  | "PENDING"
+  | "PROCESSING"
+  | "VERIFIED"
+  | "REJECTED"
+  | "FAILED";
+
+/** Sanitized verification metadata exposed to the UI and World ID MCP.
+ * The raw IDKit proof is deliberately absent and remains server-side only. */
+export interface WorldIdVerificationRecord {
+  id: number;
+  tokenId: string;
+  accountId: string;
+  check: WorldIdCheckKind;
+  status: WorldIdVerificationStatus;
+  action: string;
+  expectedSignal: string;
+  credential: string | null;
+  nullifierHash: string | null;
+  errorCode: string | null;
+  errorDetail: string | null;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  verifiedAt: string | null;
 }
 
 export interface WorldIdClientConfig {

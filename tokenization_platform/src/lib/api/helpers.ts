@@ -43,6 +43,15 @@ export function parseRequestId(value: string): number {
   return id;
 }
 
+export function parseWorldIdVerificationId(value: string): number {
+  if (!/^\d+$/.test(value)) throw new ApiError("Invalid World ID verification id", 400);
+  const id = Number(value);
+  if (!Number.isSafeInteger(id) || id < 1) {
+    throw new ApiError("Invalid World ID verification id", 400);
+  }
+  return id;
+}
+
 /** Wraps a route handler body so thrown ApiErrors (and Hedera SDK errors) become JSON responses. */
 export async function handleRoute(fn: () => Promise<NextResponse>): Promise<NextResponse> {
   try {
