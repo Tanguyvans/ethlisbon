@@ -240,154 +240,6 @@ a:focus-visible {
   color: #738078;
 }
 
-.mint-hero {
-  position: relative;
-  display: grid;
-  min-height: 26.5rem;
-  overflow: hidden;
-  grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.65fr);
-  border: 1px solid #d7e1d8;
-  border-radius: 1.45rem;
-  background: #eef6f0;
-}
-
-.mint-hero::before {
-  position: absolute;
-  right: -8rem;
-  bottom: -15rem;
-  width: 33rem;
-  height: 33rem;
-  border-radius: 50%;
-  background: var(--lemon-soft);
-  content: "";
-  pointer-events: none;
-}
-
-.mint-hero-copy {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: clamp(2.8rem, 5vw, 5rem);
-}
-
-.mint-hero h1 {
-  max-width: 10ch;
-  margin-top: 1.15rem;
-  font-family: var(--font-display);
-  font-size: clamp(3.45rem, 6.4vw, 5.7rem);
-  font-weight: 720;
-  line-height: 0.92;
-  letter-spacing: -0.072em;
-}
-
-.mint-hero h1 span {
-  color: var(--green);
-  font-weight: 520;
-}
-
-.mint-hero-lede {
-  max-width: 36rem;
-  margin-top: 1.55rem;
-  font-size: 0.98rem;
-  line-height: 1.7;
-  color: #526a61;
-}
-
-.mint-hero-actions {
-  display: flex;
-  align-items: center;
-  gap: 1.2rem;
-  margin-top: 1.7rem;
-}
-
-.mint-primary-link {
-  display: inline-flex;
-  min-height: 2.8rem;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  border-radius: 0.75rem;
-  padding: 0.72rem 1rem;
-  color: white;
-  background: var(--green-deep);
-  font-size: 0.78rem;
-  font-weight: 680;
-  transition: background 160ms ease, transform 160ms ease;
-}
-
-.mint-primary-link:hover {
-  background: #12604d;
-  transform: translateY(-1px);
-}
-
-.mint-primary-link svg {
-  width: 1rem;
-  height: 1rem;
-}
-
-.mint-network-note {
-  font-family: var(--font-ledger-mono);
-  font-size: 0.55rem;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: #687970;
-}
-
-.mint-mascot-stage {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  min-height: 100%;
-  place-items: center;
-  padding: 2.4rem 2.5rem 3.8rem;
-}
-
-.mint-mascot {
-  width: min(100%, 19rem);
-  height: auto;
-  border: 1px solid rgb(8 62 52 / 0.1);
-  border-radius: 2.2rem;
-  box-shadow: 0 24px 60px rgb(8 62 52 / 0.09);
-}
-
-.mint-agent-status {
-  position: absolute;
-  right: 2rem;
-  bottom: 2rem;
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  min-width: 10.5rem;
-  border: 1px solid #d8e2d9;
-  border-radius: 0.8rem;
-  padding: 0.72rem 0.85rem;
-  background: rgb(255 255 255 / 0.9);
-  box-shadow: 0 12px 30px rgb(8 62 52 / 0.09);
-  backdrop-filter: blur(12px);
-}
-
-.mint-agent-status > span:last-child {
-  display: flex;
-  flex-direction: column;
-  gap: 0.12rem;
-}
-
-.mint-agent-status small {
-  font-family: var(--font-ledger-mono);
-  font-size: 0.48rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #78877e;
-}
-
-.mint-agent-status strong {
-  font-size: 0.7rem;
-  font-weight: 680;
-  color: #204b3f;
-}
-
 .mint-empty-state {
   display: flex;
   align-items: center;
@@ -565,7 +417,7 @@ a:focus-visible {
 }
 
 .rwa-catalog-head.is-page-start {
-  padding-top: 3.4rem;
+  padding-top: 0.8rem;
 }
 
 .rwa-catalog-head h2,
@@ -1132,22 +984,6 @@ a:focus-visible {
 }
 
 @media (max-width: 900px) {
-  .mint-hero {
-    grid-template-columns: minmax(0, 1.1fr) minmax(14rem, 0.65fr);
-  }
-
-  .mint-hero-copy {
-    padding: 3.2rem 2.4rem;
-  }
-
-  .mint-mascot-stage {
-    padding-inline: 1.5rem;
-  }
-
-  .mint-agent-status {
-    right: 1rem;
-  }
-
   .rwa-hero {
     grid-template-columns: 1fr;
     align-items: start;
@@ -1235,46 +1071,6 @@ a:focus-visible {
     padding-bottom: 3.5rem;
   }
 
-  .mint-hero {
-    min-height: 0;
-    grid-template-columns: 1fr;
-    border-radius: 1.05rem;
-  }
-
-  .mint-hero::before {
-    right: -10rem;
-    bottom: -17rem;
-  }
-
-  .mint-hero-copy {
-    padding: 2.5rem 1.45rem 1.25rem;
-  }
-
-  .mint-hero h1 {
-    font-size: clamp(3rem, 15vw, 4.15rem);
-  }
-
-  .mint-hero-actions {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0.85rem;
-  }
-
-  .mint-mascot-stage {
-    min-height: 19rem;
-    padding: 1rem 2.5rem 3.5rem;
-  }
-
-  .mint-mascot {
-    width: min(100%, 15rem);
-    border-radius: 1.7rem;
-  }
-
-  .mint-agent-status {
-    right: 1rem;
-    bottom: 1rem;
-  }
-
   .app-footer {
     flex-direction: column;
     line-height: 1.55;
@@ -1308,7 +1104,7 @@ a:focus-visible {
   }
 
   .rwa-catalog-head.is-page-start {
-    padding-top: 2.5rem;
+    padding-top: 0.5rem;
   }
 
   .rwa-grid {
@@ -1361,7 +1157,6 @@ a:focus-visible {
 
   .rwa-card,
   .rwa-card-action,
-  .mint-primary-link,
   .rwa-modal-backdrop,
   .rwa-access-panel {
     animation: none;
