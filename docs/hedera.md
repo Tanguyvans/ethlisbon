@@ -20,7 +20,7 @@
 - `apps/platform/src/lib/walletconnect/connector.ts` — Hedera WalletConnect configuration.
 - `apps/platform/src/app/api/tokens/` — public and operator token lifecycle API routes.
 - `apps/platform/src/lib/tokenRequests.ts` — idempotent Hermes mint-and-transfer fulfillment.
-- `apps/agent/mcp/hedera.py` — Hedera MCP tools exposed to Hermes.
+- `apps/agent/mcps/hedera/server.py` — Hedera MCP tools exposed to Hermes.
 
 ## Tracks addressed
 

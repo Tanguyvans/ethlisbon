@@ -101,11 +101,34 @@ RUN printf 'docker\n' > /opt/hermes-agent/.install_method
 COPY apps/agent/requirements.txt /app/requirements.txt
 RUN uv pip install --system --no-cache -r /app/requirements.txt
 
+# ── Subgraph MCP (TypeScript) — the "subgraph" MCP server registered in
+# server.py:write_config_yaml. Shipped and run AS-IS (no Python port): Hermes
+# launches it as a stdio subprocess via tsx (see the mcp_servers.subgraph
+# command there). Two checkouts are baked in:
+#   /opt/subgraph-mcp — the MCP server itself (needs tsx + its runtime deps).
+#   /opt/subgraph     — the subgraph project the deploy tools shell out to; its
+#                       node_modules carries @graphprotocol/graph-cli, which
+#                       add_token_source/set_token_sources invoke via
+#                       `npm run codegen|build|deploy`.
+# Node 22 is already installed above (for the dashboard build), so no new
+# toolchain is needed. node_modules is .dockerignore'd from the build context,
+# so a fresh `npm ci` per arch is required — never rely on host node_modules.
+# Deps are installed BEFORE app sources are copied (below) so these heavy
+# graph-cli layers stay cached across ordinary server.py/app edits; the manifest
+# lives on the /data volume at runtime (see start.sh + SUBGRAPH_DIR), so
+# /opt/subgraph stays a read-only template.
+COPY apps/agent/mcps/subgraph/mcp-server/package.json apps/agent/mcps/subgraph/mcp-server/package-lock.json /opt/subgraph-mcp/
+RUN cd /opt/subgraph-mcp && npm ci --no-audit --no-fund
+COPY apps/agent/mcps/subgraph/mcp-server/ /opt/subgraph-mcp/
+COPY apps/agent/mcps/subgraph/subgraph/package.json apps/agent/mcps/subgraph/subgraph/package-lock.json /opt/subgraph/
+RUN cd /opt/subgraph && npm ci --no-audit --no-fund
+COPY apps/agent/mcps/subgraph/subgraph/ /opt/subgraph/
+
 RUN mkdir -p /data/.hermes /data/tokenization
 
 COPY apps/agent/server.py /app/server.py
-COPY apps/agent/mcp/hedera.py /app/hedera_mcp.py
-COPY apps/agent/mcp/worldid.py /app/worldid_mcp.py
+COPY apps/agent/mcps/hedera/server.py /app/hedera_mcp.py
+COPY apps/agent/mcps/worldid/server.py /app/worldid_mcp.py
 COPY apps/agent/templates/ /app/templates/
 COPY apps/agent/start.sh /app/start.sh
 # Default agent identity (AGENTS.md, etc.) — start.sh seeds these onto the

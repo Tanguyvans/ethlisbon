@@ -370,7 +370,7 @@ def pause_token(token_id: str, paused: bool = True) -> dict[str, Any]:
 def _selftest() -> None:
     """Bypass MCP transport and call a tool function directly — useful to
     smoke-test the HTTP wiring against a locally running tokenization app
-    without needing an MCP client. Run: python mcp/hedera.py --selftest
+    without needing an MCP client. Run: python mcps/hedera/server.py --selftest
     """
     import json
 

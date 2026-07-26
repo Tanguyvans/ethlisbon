@@ -21,8 +21,8 @@
 - `apps/platform/src/lib/worldid/policy.ts` — Selfie/Identity eligibility policy.
 - `apps/platform/src/lib/worldid/proof.ts` — canonical proof replay digest.
 - `apps/platform/src/lib/db/schema.ts` and `apps/platform/src/lib/db/repo.ts` — proof queue, nullifier scope, timestamps, and replay protection.
-- `apps/agent/mcp/worldid.py` — sanitized World verification tools used by Hermes.
-- `apps/agent/mcp/hedera.py` — recurring-liveness token policy and deterministic expiry sweep tool.
+- `apps/agent/mcps/worldid/server.py` — sanitized World verification tools used by Hermes.
+- `apps/agent/mcps/hedera/server.py` — recurring-liveness token policy and deterministic expiry sweep tool.
 - `apps/agent/agent-identity/AGENTS.md` — agent instructions for World-gated token requests.
 
 World AgentKit is not currently integrated. The project uses IDKit, World verification APIs, and a dedicated Hermes MCP. The implemented sponsor tracks are **Selfie Check Beta** and **Identity Check Beta Test**.

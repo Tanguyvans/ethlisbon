@@ -80,6 +80,39 @@ if [ ! -f /data/.hermes/auth.json ] && [ -n "${HERMES_AUTH_JSON_BOOTSTRAP}" ]; t
   chmod 600 /data/.hermes/auth.json
 fi
 
+# Seed the writable, volume-backed subgraph working copy the "subgraph" MCP's
+# deploy tools mutate. The image ships a read-only template at /opt/subgraph
+# (code + node_modules incl. graph-cli); SUBGRAPH_DIR (set on the MCP env in
+# server.py) points the server at /data/subgraph instead so the agent-managed
+# token set in subgraph.yaml survives redeploys.
+#
+# Same "refresh code from the image, preserve runtime state" idiom as the
+# identity files above:
+#   - Code files (schema, abis, src, scripts, package*.json) are refreshed from
+#     the image every boot so mapping/schema fixes ship with a redeploy.
+#   - subgraph.yaml is PRESERVED if the volume already has one (the agent's live
+#     tracked-token set), else seeded from the image template.
+#   - node_modules is symlinked to the image's copy rather than duplicated onto
+#     the volume: graph codegen/build only write generated/ and build/ under
+#     SUBGRAPH_DIR, never into node_modules, so a shared read-only tree is safe
+#     and avoids copying the heavy graph-cli install on every boot.
+if [ -d /opt/subgraph ]; then
+  mkdir -p /data/subgraph
+  for item in schema.graphql abis src scripts package.json package-lock.json .gitignore; do
+    if [ -e "/opt/subgraph/$item" ]; then
+      rm -rf "/data/subgraph/$item"
+      cp -r "/opt/subgraph/$item" "/data/subgraph/$item"
+    fi
+  done
+  # Preserve an existing manifest; seed the template only on a fresh volume.
+  if [ ! -f /data/subgraph/subgraph.yaml ]; then
+    cp /opt/subgraph/subgraph.yaml /data/subgraph/subgraph.yaml
+  fi
+  # (Re)point node_modules at the image's baked install.
+  rm -rf /data/subgraph/node_modules
+  ln -s /opt/subgraph/node_modules /data/subgraph/node_modules
+fi
+
 # Clear any stale gateway PID file left over from the previous container.
 # `hermes gateway` writes /data/.hermes/gateway.pid on start but does not
 # remove it on SIGTERM. Since /data is a persistent volume, the file

@@ -199,6 +199,13 @@ ENV_VARS = [
     ("WORLD_RP_SIGNING_KEY",      "World RP signing key",      "worldid",   True),
     ("WORLD_ACTION",              "Selfie action",             "worldid",   False),
     ("WORLD_IDENTITY_ACTION",     "Identity action",           "worldid",   False),
+    # ── Subgraph MCP (The Graph) — read config.yaml's mcp_servers.subgraph ──
+    # SUBGRAPH_URL is the stable ".../version/latest" Studio query URL (see the
+    # TS server's docstrings); GRAPH_DEPLOY_KEY authorizes the deploy tools.
+    ("SUBGRAPH_URL",             "Subgraph query URL",       "subgraph",  False),
+    ("SEPOLIA_RPC_URL",          "Sepolia RPC URL",          "subgraph",  False),
+    ("GRAPH_DEPLOY_KEY",         "Graph deploy key",         "subgraph",  True),
+    ("GRAPH_SUBGRAPH_NAME",      "Subgraph name",            "subgraph",  False),
     # ── Defaults for the next token — parameters (mirror createTokenSchema) ─
     ("TOKEN_NAME",               "Token name",               "token",     False),
     ("TOKEN_SYMBOL",             "Token symbol",             "token",     False),
@@ -623,6 +630,36 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
     worldid_env["TOKENIZATION_AGENT_SECRET"] = TOKENIZATION_AGENT_SECRET
     worldid_mcp["env"] = worldid_env
     mcp_servers["worldid"] = worldid_mcp
+
+    # The subgraph MCP is the upstream TypeScript server, run as-is: Hermes
+    # launches it via tsx (baked into the image at /opt/subgraph-mcp). Unlike
+    # hedera/worldid it does NOT talk to the loopback Next.js app — it queries
+    # Graph Studio directly (SUBGRAPH_URL) and, for the deploy tools, shells out
+    # to graph-cli in SUBGRAPH_DIR. SUBGRAPH_DIR is deployment-managed (the
+    # writable, volume-backed copy start.sh seeds); the rest come from .env when
+    # set, and we never wipe an operator's manually-set config.yaml value with an
+    # empty one.
+    subgraph_mcp = mcp_servers.get("subgraph")
+    if not isinstance(subgraph_mcp, dict):
+        subgraph_mcp = {}
+    subgraph_mcp.setdefault("command", "/opt/subgraph-mcp/node_modules/.bin/tsx")
+    subgraph_mcp.setdefault("args", ["/opt/subgraph-mcp/src/index.ts"])
+    subgraph_env = subgraph_mcp.get("env")
+    if not isinstance(subgraph_env, dict):
+        subgraph_env = {}
+    subgraph_env["SUBGRAPH_DIR"] = "/data/subgraph"
+    # Fall back to os.environ so an operator who sets these directly as Railway
+    # env vars (not via the setup wizard's .env) still has them injected into the
+    # MCP's env block — unlike the loopback Next.js app, the MCP subprocess only
+    # gets what hermes passes from config.yaml, so we can't rely on process-env
+    # passthrough alone.
+    for _key in ("SUBGRAPH_URL", "SEPOLIA_RPC_URL", "GRAPH_DEPLOY_KEY", "GRAPH_SUBGRAPH_NAME"):
+        _value = (data.get(_key) or os.environ.get(_key, "")).strip()
+        if _value:
+            subgraph_env[_key] = _value
+    subgraph_mcp["env"] = subgraph_env
+    mcp_servers["subgraph"] = subgraph_mcp
+
     merged["mcp_servers"] = mcp_servers
 
     # The storefront POSTs a signed event here after committing a request to
@@ -729,13 +766,14 @@ def build_hermes_env() -> dict[str, str]:
 
 def write_env(path: Path, data: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    cat_order = ["model", "provider", "hedera", "worldid", "token",
+    cat_order = ["model", "provider", "hedera", "worldid", "subgraph", "token",
                  "bedrock", "azure", "custom", "tool",
                  "telegram", "discord", "slack", "whatsapp",
                  "email", "mattermost", "matrix", "gateway", "admin"]
     cat_labels = {
         "model": "Model", "provider": "Providers",
         "hedera": "Hedera operator", "worldid": "World ID",
+        "subgraph": "Subgraph (The Graph)",
         "token": "Next token defaults",
         "bedrock": "AWS Bedrock", "azure": "Azure Foundry",
         "custom": "Custom Endpoint", "tool": "Tools",

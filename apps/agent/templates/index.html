@@ -1354,6 +1354,34 @@
           </div>
         </div>
 
+        <!-- ══ Subgraph (The Graph) ══ -->
+        <div class="section-label" style="margin-top:20px;">
+          Subgraph (The Graph)
+          <span class="req-note">optional — ERC20 analytics tools</span>
+        </div>
+        <div class="card">
+          <p class="hint" style="margin:0 0 12px;line-height:1.55;">
+            Powers the agent's <code>subgraph</code> tools that query ERC20 transfer data indexed on
+            Ethereum Sepolia and add/remove tracked tokens. Use the stable
+            <code>&hellip;/version/latest</code> query URL from Graph Studio (not the version-pinned one).
+            The deploy key stays server-side and is only needed for add/remove tools.
+          </p>
+          <div class="field-gap">
+            <label class="field-label">Subgraph query URL</label>
+            <input type="text" :value="vars.SUBGRAPH_URL||''" @input="vars.SUBGRAPH_URL=$event.target.value" placeholder="https://api.studio.thegraph.com/query/<id>/<name>/version/latest">
+          </div>
+          <div class="field-grid-2 field-gap">
+            <div>
+              <label class="field-label">Deploy key <span style="color:var(--text-dim);font-weight:400;">(for add/remove)</span></label>
+              <input type="password" :value="vars.GRAPH_DEPLOY_KEY||''" @input="vars.GRAPH_DEPLOY_KEY=$event.target.value" placeholder="from the subgraph's Studio page">
+            </div>
+            <div>
+              <label class="field-label">Subgraph name</label>
+              <input type="text" :value="vars.GRAPH_SUBGRAPH_NAME||''" @input="vars.GRAPH_SUBGRAPH_NAME=$event.target.value" placeholder="sepolia-test">
+            </div>
+          </div>
+        </div>
+
       </div>
       <div class="save-bar">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-dim);cursor:pointer;">
