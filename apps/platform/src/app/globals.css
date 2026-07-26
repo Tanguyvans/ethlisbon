@@ -1,6 +1,8 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
+  color-scheme: light;
   --background: #f2f4f1;
   --foreground: #17201b;
   --surface: #fbfcfa;
@@ -404,6 +406,10 @@ a:focus-visible {
   justify-content: space-between;
   gap: 1rem;
   padding: 3.4rem 0 1.35rem;
+}
+
+.rwa-catalog-head.is-page-start {
+  padding-top: 0.8rem;
 }
 
 .rwa-catalog-head h2,
@@ -1016,6 +1022,10 @@ a:focus-visible {
     align-items: flex-start;
     flex-direction: column;
     padding-top: 2.5rem;
+  }
+
+  .rwa-catalog-head.is-page-start {
+    padding-top: 0.5rem;
   }
 
   .rwa-grid {

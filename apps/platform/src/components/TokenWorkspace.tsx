@@ -1,12 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { postJson } from "@/lib/apiClient";
-import { Badge, Button, Card } from "@/components/ui";
+import { Badge, Card } from "@/components/ui";
 import HolderPanel from "@/components/HolderPanel";
-import HolderTable from "@/components/HolderTable";
-import DistributeForm from "@/components/DistributeForm";
 import EventLog from "@/components/EventLog";
 import type {
   EventRecord,
@@ -32,76 +27,41 @@ export default function TokenWorkspace({
   return (
     <div className="flex flex-col gap-6">
       <TokenHeader token={token} />
-      <div className="grid lg:grid-cols-2 gap-6 items-start">
-        <HolderPanel
-          token={token}
-          holders={holders}
-          requests={requests}
-          worldConfig={worldConfig}
-        />
-        <DistributeForm token={token} holders={holders} />
-      </div>
-      <HolderTable token={token} holders={holders} />
+      <HolderPanel
+        token={token}
+        holders={holders}
+        requests={requests}
+        worldConfig={worldConfig}
+      />
       <EventLog events={events} />
     </div>
   );
 }
 
 function TokenHeader({ token }: { token: TokenRecord }) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   return (
     <Card className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold">{token.name}</h1>
-            <span className="text-zinc-500">{token.symbol}</span>
-            {token.paused && <Badge tone="red">PAUSED</Badge>}
-          </div>
-          <div className="text-sm text-zinc-500 mt-1 flex items-center gap-2 flex-wrap">
-            <span className="font-mono">{token.id}</span>
-            <span>·</span>
-            <span>{token.tokenType}</span>
-            <span>·</span>
-            <span>treasury {token.treasuryAccountId}</span>
-            <Badge tone={token.blockchain === "EVM" ? "violet" : "emerald"}>
-              {token.blockchain === "EVM" ? "Ethereum Sepolia" : "Hedera testnet"}
-            </Badge>
-            <a href={token.explorerUrl} target="_blank" rel="noreferrer" className="hover:underline">
-              {token.explorerName} ↗
-            </a>
-          </div>
+      <div>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold">{token.name}</h1>
+          <span className="text-zinc-500">{token.symbol}</span>
+          {token.paused && <Badge tone="red">PAUSED</Badge>}
         </div>
-        {token.keys.pause && (
-          <Button
-            variant={token.paused ? "primary" : "secondary"}
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              setError(null);
-              try {
-                await postJson(`/api/tokens/${token.id}/pause`, { paused: !token.paused });
-                router.refresh();
-              } catch (err) {
-                setError(err instanceof Error ? err.message : "Failed to toggle pause");
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            {busy ? "Working…" : token.paused ? "Unpause token" : "Pause token"}
-          </Button>
-        )}
+        <div className="text-sm text-zinc-500 mt-1 flex items-center gap-2 flex-wrap">
+          <span className="font-mono">{token.id}</span>
+          <span>·</span>
+          <span>{token.tokenType}</span>
+          <Badge tone={token.blockchain === "EVM" ? "violet" : "emerald"}>
+            {token.blockchain === "EVM" ? "Ethereum Sepolia" : "Hedera testnet"}
+          </Badge>
+          <a href={token.explorerUrl} target="_blank" rel="noreferrer" className="hover:underline">
+            {token.explorerName} ↗
+          </a>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1.5">
-        {token.compliance.kycRequired && <Badge>KYC key</Badge>}
-        {token.compliance.freezeDefault && <Badge>Freeze key</Badge>}
-        {token.compliance.wipeEnabled && <Badge>Wipe key</Badge>}
-        {token.compliance.pauseEnabled && <Badge>Pause key</Badge>}
+        {token.compliance.kycRequired && <Badge>KYC required</Badge>}
         {token.customFee && <Badge>Custom fee</Badge>}
         {token.compliance.worldIdSelfieCheck && <Badge tone="violet">Selfie Check</Badge>}
         {token.compliance.worldIdMinimumAge && (
@@ -116,7 +76,6 @@ function TokenHeader({ token }: { token: TokenRecord }) {
           </Badge>
         )}
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
     </Card>
   );
 }

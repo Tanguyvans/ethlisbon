@@ -74,41 +74,7 @@ function tokenControls(token: TokenRecord) {
 export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[] }) {
   return (
     <>
-      <section className="rwa-hero">
-        <div className="rwa-hero-copy">
-          <p className="rwa-eyebrow">
-            <span aria-hidden="true" />
-            Tokenized asset registry
-          </p>
-          <h1>
-            Real assets,
-            <br />
-            <span>clear oversight.</span>
-          </h1>
-          <p className="rwa-lede">
-            Review every instrument deployed by this agent, verify access
-            conditions and manage holders from one secure workspace.
-          </p>
-        </div>
-        <div className="rwa-proof-key" aria-label="Registry status">
-          <div className="rwa-proof-heading">
-            <p>Registry status</p>
-            <span>Operational</span>
-          </div>
-          <div>
-            <span className="proof-live-dot" aria-hidden="true" />
-            <p>Network</p>
-            <strong>Hedera + Sepolia</strong>
-          </div>
-          <div>
-            <span className="proof-sim-dot" aria-hidden="true" />
-            <p>Deployed tokens</p>
-            <strong>{tokens.length}</strong>
-          </div>
-        </div>
-      </section>
-
-      <div className="rwa-catalog-head" id="instruments">
+      <div className="rwa-catalog-head is-page-start" id="instruments">
         <div>
           <p className="rwa-kicker">Asset registry</p>
           <h2>Deployed instruments</h2>
