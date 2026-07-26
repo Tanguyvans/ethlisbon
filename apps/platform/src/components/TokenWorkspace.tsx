@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Badge, Card } from "@/components/ui";
 import HolderPanel from "@/components/HolderPanel";
 import EventLog from "@/components/EventLog";
@@ -25,7 +26,11 @@ export default function TokenWorkspace({
   worldConfig: WorldIdClientConfig;
 }) {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="token-workspace">
+      <Link href="/" className="token-back-link">
+        <span aria-hidden="true">←</span>
+        All tokens
+      </Link>
       <TokenHeader token={token} />
       <HolderPanel
         token={token}
@@ -40,11 +45,11 @@ export default function TokenWorkspace({
 
 function TokenHeader({ token }: { token: TokenRecord }) {
   return (
-    <Card className="flex flex-col gap-3">
+    <Card className="token-header-card flex flex-col gap-4">
       <div>
         <div className="flex items-center gap-2">
+          <span className="token-header-symbol">{token.symbol}</span>
           <h1 className="text-2xl font-semibold">{token.name}</h1>
-          <span className="text-zinc-500">{token.symbol}</span>
           {token.paused && <Badge tone="red">PAUSED</Badge>}
         </div>
         <div className="text-sm text-zinc-500 mt-1 flex items-center gap-2 flex-wrap">

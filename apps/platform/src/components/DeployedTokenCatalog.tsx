@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { TokenRecord } from "@/types";
 
@@ -7,8 +8,8 @@ const ACCENTS = [
     mark: "is-sage",
   },
   {
-    chip: "is-bronze",
-    mark: "is-bronze",
+    chip: "is-lemon",
+    mark: "is-lemon",
   },
   {
     chip: "is-slate",
@@ -74,22 +75,73 @@ function tokenControls(token: TokenRecord) {
 export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[] }) {
   return (
     <>
+      <section className="mint-hero" aria-labelledby="mint-hero-title">
+        <div className="mint-hero-copy">
+          <p className="rwa-eyebrow">
+            <span aria-hidden="true" />
+            Agent-operated token marketplace
+          </p>
+          <h1 id="mint-hero-title">
+            Mint assets.
+            <br />
+            <span>Keep it chill.</span>
+          </h1>
+          <p className="mint-hero-lede">
+            Browse tokens deployed by Hermes across Hedera and Sepolia. Connect
+            your wallet, complete the required checks, and let the agent handle
+            distribution.
+          </p>
+          <div className="mint-hero-actions">
+            <a href="#instruments" className="mint-primary-link">
+              Explore assets
+              <ArrowIcon />
+            </a>
+            <span className="mint-network-note">Hedera · Sepolia · World ID</span>
+          </div>
+        </div>
+
+        <div className="mint-mascot-stage" aria-label="Hermes agent status">
+          <Image
+            src="/brand/logo-512.png"
+            alt="Mint & Chill lemon mascot"
+            width={512}
+            height={512}
+            className="mint-mascot"
+            priority
+          />
+          <div className="mint-agent-status">
+            <span className="proof-live-dot" aria-hidden="true" />
+            <span>
+              <small>Hermes agent</small>
+              <strong>Ready to verify</strong>
+            </span>
+          </div>
+        </div>
+      </section>
+
       <div className="rwa-catalog-head is-page-start" id="instruments">
         <div>
-          <p className="rwa-kicker">Asset registry</p>
-          <h2>Deployed instruments</h2>
+          <p className="rwa-kicker">Live registry</p>
+          <h2>Available tokens</h2>
         </div>
         <span className="rwa-no-payment">
           <span className="proof-live-dot" aria-hidden="true" />
-          Deployment synced
+          Synced by Hermes
         </span>
       </div>
 
       {tokens.length === 0 ? (
-        <div className="rounded-[1.35rem] border border-zinc-300 bg-white/80 px-6 py-16 text-center shadow-sm">
+        <div className="mint-empty-state">
+          <Image
+            src="/brand/logo-512.png"
+            alt=""
+            width={72}
+            height={72}
+            aria-hidden="true"
+          />
           <h3 className="text-xl font-semibold">No token deployed yet</h3>
           <p className="mt-2 text-sm text-zinc-500">
-            Once the agent deploys a token, its card will appear here.
+            Ask Hermes to deploy one. It will appear here when the transaction is confirmed.
           </p>
         </div>
       ) : (
