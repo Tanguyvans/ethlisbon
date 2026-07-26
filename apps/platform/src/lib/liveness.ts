@@ -19,6 +19,12 @@ import {
   revokeKyc,
 } from "@/lib/hedera/tokenService";
 import type { HolderRecord, TokenRecord } from "@/types";
+import {
+  getEvmTokenBalance,
+  reclaimEvmViaAllowance,
+  setEvmApproved,
+  setEvmFrozen,
+} from "@/lib/evm/client";
 
 export const MIN_LIVENESS_PERIOD_SECONDS = 60;
 // Hedera accepts expirations up to 62 days. Keep a two-day margin so clock skew and
@@ -56,7 +62,7 @@ export async function recordVerifiedSelfieLiveness(
   }
 
   if (holder.lastCheckinAt !== verifiedAt) {
-    if (holder.activeScheduleId) {
+    if (token.blockchain === "HEDERA" && holder.activeScheduleId) {
       await cancelScheduledReclaim(holder.activeScheduleId);
       insertEvent({
         tokenId,
@@ -97,6 +103,7 @@ export async function armLivenessReclaim(
   if (!token.compliance.livenessEnabled || !periodSeconds) return { mode: "disabled" };
   if (!holder.lastCheckinAt) return { mode: "expired" };
   if (!holder.allowanceGranted) return { mode: "waiting-for-allowance" };
+  if (token.blockchain === "EVM") return { mode: "worker" };
   if (holder.activeScheduleId && holder.activeScheduleExpiresAt) {
     return {
       mode: "scheduled",
@@ -192,7 +199,7 @@ async function reclaimExpiredHolder(
   holder: HolderRecord
 ): Promise<"reclaimed" | "scheduled-reclaim-confirmed"> {
   let scheduledExecuted = false;
-  if (holder.activeScheduleId) {
+  if (token.blockchain === "HEDERA" && holder.activeScheduleId) {
     try {
       const schedule = await getScheduledReclaimStatus(holder.activeScheduleId);
       scheduledExecuted = !!schedule.executedAt;
@@ -209,15 +216,21 @@ async function reclaimExpiredHolder(
     }
   }
 
-  const remainingBalance = await getTokenBalance(token.id, holder.accountId);
-  let transferResult: Awaited<ReturnType<typeof reclaimViaAllowanceNow>> | null = null;
+  const remainingBalance = token.blockchain === "EVM"
+    ? await getEvmTokenBalance(token.id, holder.accountId)
+    : BigInt(await getTokenBalance(token.id, holder.accountId));
+  let transferResult: Awaited<ReturnType<typeof reclaimViaAllowanceNow>> | Awaited<ReturnType<typeof reclaimEvmViaAllowance>> | null = null;
   if (remainingBalance > 0) {
-    transferResult = await reclaimViaAllowanceNow(token.id, holder.accountId);
+    transferResult = token.blockchain === "EVM"
+      ? await reclaimEvmViaAllowance(token.id, holder.accountId)
+      : await reclaimViaAllowanceNow(token.id, holder.accountId);
   }
 
   // Revoke native access only after the approved transfer, otherwise KYC/freeze can block it.
   if (token.compliance.kycRequired && holder.kycGranted) {
-    const result = await revokeKyc(token.id, holder.accountId);
+    const result = token.blockchain === "EVM"
+      ? await setEvmApproved(token.id, holder.accountId, false)
+      : await revokeKyc(token.id, holder.accountId);
     insertEvent({
       tokenId: token.id,
       accountId: holder.accountId,
@@ -228,7 +241,9 @@ async function reclaimExpiredHolder(
     });
   }
   if (token.compliance.freezeDefault && !holder.frozen) {
-    const result = await freezeAccount(token.id, holder.accountId);
+    const result = token.blockchain === "EVM"
+      ? await setEvmFrozen(token.id, holder.accountId, true)
+      : await freezeAccount(token.id, holder.accountId);
     insertEvent({
       tokenId: token.id,
       accountId: holder.accountId,
@@ -254,8 +269,10 @@ async function reclaimExpiredHolder(
     type: "AUTO_RECLAIM_EXECUTED",
     detail: {
       reason: "World ID Selfie Check expired",
-      amount: transferResult?.amount ?? remainingBalance,
-      mechanism: transferResult ? "allowance transfer" : "Hedera scheduled transfer",
+      amount: transferResult?.amount ?? remainingBalance.toString(),
+      mechanism: transferResult
+        ? token.blockchain === "EVM" ? "ERC-20 transferFrom allowance" : "allowance transfer"
+        : "Hedera scheduled transfer",
     },
     txId: transferResult?.txId,
     hashscanUrl: transferResult?.hashscanUrl,

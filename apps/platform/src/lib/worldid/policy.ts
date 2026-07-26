@@ -1,7 +1,8 @@
 import type { HolderRecord, TokenRecord } from "@/types";
+import { worldIdHolderSignal as chainBoundWorldIdHolderSignal } from "@/lib/chains";
 
-export function worldIdHolderSignal(tokenId: string, accountId: string): string {
-  return `hedera:${tokenId}:holder:${accountId}`;
+export function worldIdHolderSignal(token: TokenRecord, accountId: string): string {
+  return chainBoundWorldIdHolderSignal(token, accountId);
 }
 
 export function hasRequiredWorldIdVerification(

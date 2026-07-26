@@ -41,7 +41,7 @@ export default function EventLog({ events }: { events: EventRecord[] }) {
               </div>
               {event.hashscanUrl && (
                 <a href={event.hashscanUrl} target="_blank" rel="noreferrer" className="text-xs text-zinc-500 hover:underline shrink-0">
-                  HashScan ↗
+                  Explorer ↗
                 </a>
               )}
             </li>

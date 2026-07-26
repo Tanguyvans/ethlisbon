@@ -187,8 +187,9 @@ a:focus-visible {
 .app-wallet-control {
   position: relative;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .app-wallet-button {

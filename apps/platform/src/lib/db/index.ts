@@ -25,12 +25,33 @@ function openDb(): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA_SQL);
+  migrateTokenChains(db);
   migrateTokenCompliancePolicy(db);
   migrateHolderWorldIdProofs(db);
   migrateHolderLivenessState(db);
   migrateWorldIdVerificationQueue(db);
 
   return db;
+}
+
+/** Existing Railway volumes predate multi-chain support. Their rows are Hedera testnet
+ * deployments and must retain that identity exactly after the migration. */
+function migrateTokenChains(db: Database.Database): void {
+  const columns = new Set(
+    (db.pragma("table_info(tokens)") as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("blockchain")) {
+    db.exec("ALTER TABLE tokens ADD COLUMN blockchain TEXT NOT NULL DEFAULT 'HEDERA'");
+  }
+  const addedNetwork = !columns.has("network");
+  if (addedNetwork) {
+    db.exec("ALTER TABLE tokens ADD COLUMN network TEXT NOT NULL DEFAULT 'testnet'");
+  }
+  if (addedNetwork) {
+    const configured = (process.env.HEDERA_NETWORK ?? "testnet").toLowerCase();
+    const network = configured === "mainnet" || configured === "previewnet" ? configured : "testnet";
+    db.prepare("UPDATE tokens SET network = ? WHERE blockchain = 'HEDERA'").run(network);
+  }
 }
 
 /** Persist reclaim attempts so a restarted worker cannot double-submit or retry a broken

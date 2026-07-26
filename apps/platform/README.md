@@ -1,12 +1,12 @@
-# Tokenization Platform (Hedera Token Service)
+# Multi-chain Tokenization Platform (Hedera + Ethereum Sepolia)
 
-A frontend + backend for issuing real-world-asset tokens on **Hedera Token Service (HTS)** with
+A frontend + backend for issuing real-world-asset tokens on **Hedera Token Service (HTS)** or
+as compliance-aware **ERC-20 contracts on Ethereum Sepolia**, with
 compliance controls picked as checkboxes at creation time — KYC, freeze-gating, wipe/clawback,
 pause, and World ID-gated whitelisting with liveness-based auto-reclaim.
 
-Built for the ETHGlobal Lisbon 2026 Hedera track ("Tokenization on Hedera" + "No Solidity
-Allowed" — everything here is native HTS/Schedule Service via the Hedera SDK, no smart
-contracts).
+The Hedera adapter remains entirely native HTS/Schedule Service via the Hedera SDK. The Solidity
+contract under `contracts/` belongs only to the separate Sepolia adapter.
 
 ## Why HTS instead of an ERC-20 contract
 
@@ -32,9 +32,11 @@ src/
   app/
     page.tsx                     storefront (server component, reads SQLite directly)
     tokens/[tokenId]/page.tsx    token workspace (holder self-service + admin panel)
-    api/tokens/...               REST route handlers (operator-signed Hedera actions)
+    api/tokens/...               shared token/holder route handlers
+    api/evm/tokens               Sepolia ERC-20 deployment route
   components/                    React UI
   hooks/useWalletConnect.tsx     WalletConnect (HashPack etc.) client-side wallet state
+  hooks/useEvmWallet.tsx         injected EVM wallet and ERC-20 allowance signing
   lib/
     hedera/
       client.ts                 operator/treasury Client singleton
@@ -42,6 +44,7 @@ src/
       scheduleService.ts        Scheduled Transaction safety net for auto-reclaim
       mirrorNode.ts             confirms holder-granted token allowances
       format.ts                 HashScan link helpers
+    evm/client.ts               Sepolia deploy/mint/allowlist/freeze/reclaim adapter
     db/                         better-sqlite3 (schema in schema.ts, queries in repo.ts)
     walletconnect/connector.ts  browser DAppConnector singleton
     worldid/verification.ts     shared World verification API client
@@ -148,16 +151,19 @@ isolated development reference, but no production holder route calls it.
 2. **Get a free Reown/WalletConnect project ID** at [cloud.reown.com](https://cloud.reown.com) —
    needed for the "Connect wallet" flow (HashPack, Kabila, etc.). Set it as
    `WALLETCONNECT_PROJECT_ID`; the app exposes this public identifier to the browser at runtime.
-3. Copy the env file and fill it in:
+3. For Sepolia, configure `SEPOLIA_RPC_URL` and a funded
+   `EVM_OPERATOR_PRIVATE_KEY`. That account becomes the ERC-20 treasury and compliance operator.
+4. Copy the env file and fill it in:
    ```bash
    cp .env.example .env
    ```
-4. Install and run:
+5. Install and run:
    ```bash
    npm install
    npm run dev
    ```
-5. Open http://localhost:3000, create a token via `POST /api/tokens` (e.g. `curl`), then open it
+6. Open http://localhost:3000. Hedera creation uses `POST /api/tokens`; Sepolia ERC-20 creation
+   uses `POST /api/evm/tokens`. Then open it
    in a second browser (or incognito window) with a *different* funded testnet account connected
    to act as the holder.
 

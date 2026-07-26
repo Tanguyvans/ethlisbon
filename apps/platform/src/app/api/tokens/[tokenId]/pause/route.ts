@@ -3,6 +3,7 @@ import { ApiError, handleRoute, readJson, requireToken } from "@/lib/api/helpers
 import { insertEvent, setTokenPaused } from "@/lib/db/repo";
 import { pauseToken, unpauseToken } from "@/lib/hedera/tokenService";
 import { pauseSchema } from "@/lib/validation";
+import { pauseEvmToken } from "@/lib/evm/client";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ tokenId
     if (!token.keys.pause) throw new ApiError("This token was created without a pause key.", 400);
 
     const { paused } = pauseSchema.parse(await readJson<unknown>(req));
-    const result = paused ? await pauseToken(tokenId) : await unpauseToken(tokenId);
+    const result = token.blockchain === "EVM"
+      ? await pauseEvmToken(tokenId, paused)
+      : paused
+        ? await pauseToken(tokenId)
+        : await unpauseToken(tokenId);
 
     setTokenPaused(tokenId, paused);
     insertEvent({

@@ -128,6 +128,7 @@ RUN mkdir -p /data/.hermes /data/tokenization
 
 COPY apps/agent/server.py /app/server.py
 COPY apps/agent/mcps/hedera/server.py /app/hedera_mcp.py
+COPY apps/agent/mcps/evm/server.py /app/evm_mcp.py
 COPY apps/agent/mcps/worldid/server.py /app/worldid_mcp.py
 COPY apps/agent/templates/ /app/templates/
 COPY apps/agent/start.sh /app/start.sh

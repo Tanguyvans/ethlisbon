@@ -193,6 +193,9 @@ ENV_VARS = [
     ("HEDERA_OPERATOR_ID",       "Operator account ID",      "hedera",    False),
     ("HEDERA_OPERATOR_KEY",      "Operator private key",     "hedera",    True),
     ("WALLETCONNECT_PROJECT_ID", "WalletConnect project ID", "hedera",    False),
+    # ── Ethereum Sepolia operator ───────────────────────────────────────────
+    ("SEPOLIA_RPC_URL",           "Sepolia RPC URL",          "evm",       False),
+    ("EVM_OPERATOR_PRIVATE_KEY",  "EVM operator private key", "evm",       True),
     # ── World ID credential verification (server-side except app id) ────────
     ("WORLD_APP_ID",              "World App ID",              "worldid",   False),
     ("WORLD_RP_ID",               "World RP ID",               "worldid",   False),
@@ -203,7 +206,6 @@ ENV_VARS = [
     # SUBGRAPH_URL is the stable ".../version/latest" Studio query URL (see the
     # TS server's docstrings); GRAPH_DEPLOY_KEY authorizes the deploy tools.
     ("SUBGRAPH_URL",             "Subgraph query URL",       "subgraph",  False),
-    ("SEPOLIA_RPC_URL",          "Sepolia RPC URL",          "subgraph",  False),
     ("GRAPH_DEPLOY_KEY",         "Graph deploy key",         "subgraph",  True),
     ("GRAPH_SUBGRAPH_NAME",      "Subgraph name",            "subgraph",  False),
     # ── Defaults for the next token — parameters (mirror createTokenSchema) ─
@@ -600,7 +602,7 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
 
     merged["data_dir"] = HERMES_HOME
 
-    # Seed/update only the deployment-managed parts of the Hedera and World ID MCP entries.
+    # Seed/update only the deployment-managed parts of the chain and World ID MCP entries.
     # Other MCP servers and optional keys on these entries remain untouched.
     mcp_servers = merged.get("mcp_servers")
     if not isinstance(mcp_servers, dict):
@@ -617,6 +619,19 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
     hedera_env["TOKENIZATION_AGENT_SECRET"] = TOKENIZATION_AGENT_SECRET
     hedera_mcp["env"] = hedera_env
     mcp_servers["hedera"] = hedera_mcp
+
+    evm_mcp = mcp_servers.get("evm")
+    if not isinstance(evm_mcp, dict):
+        evm_mcp = {}
+    evm_mcp.setdefault("command", "python")
+    evm_mcp.setdefault("args", ["/app/evm_mcp.py"])
+    evm_env = evm_mcp.get("env")
+    if not isinstance(evm_env, dict):
+        evm_env = {}
+    evm_env["TOKENIZATION_BASE_URL"] = TOKENIZATION_URL
+    evm_env["TOKENIZATION_AGENT_SECRET"] = TOKENIZATION_AGENT_SECRET
+    evm_mcp["env"] = evm_env
+    mcp_servers["evm"] = evm_mcp
 
     worldid_mcp = mcp_servers.get("worldid")
     if not isinstance(worldid_mcp, dict):
@@ -686,12 +701,13 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
         "secret": TOKEN_REQUEST_WEBHOOK_SECRET,
         "prompt": (
             "A holder submitted stored token request #{request_id}. "
-            "Use the hedera MCP get_token_request tool with request_id={request_id}, "
-            "then inspect the referenced token and holder using get_token. "
+            "Read request_id={request_id} with get_token_request. A 0.0.x token id is Hedera "
+            "and must use the hedera MCP; a 0x contract address is Sepolia and must use the evm "
+            "MCP. Inspect the referenced token and holder using that same chain MCP's get_token. "
             "For a World ID-gated token, use the worldid MCP get_holder_verifications tool. "
             "For each configured check whose credential-specific holder timestamp is missing, "
             "call worldid verify_pending_proof with the newest PENDING or FAILED verification id, "
-            "then re-read the live token and holder using hedera get_token. "
+            "then re-read the live token and holder using the selected chain MCP's get_token. "
             "worldIdSelfieVerifiedAt is mandatory when Selfie Check is required; "
             "worldIdIdentityVerifiedAt is mandatory when age or nationality is required. "
             "Never accept the generic worldIdVerifiedAt alone and never ask for proof JSON in chat. "
@@ -702,7 +718,7 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
             "If the holder is already WHITELISTED and the other live conditions pass, call "
             "fulfill_token_request immediately. "
             "If a compliance condition definitively fails, call reject_token_request with a "
-            "concise reason. For a transient API, network, model, or Hedera error, do not reject "
+            "concise reason. For a transient API, network, model, Hedera, or Sepolia error, do not reject "
             "the request; report the error and preserve its server-managed state. Never call "
             "distribute for this workflow, "
             "never change the destination or amount, and do not merely describe what should happen."
@@ -718,7 +734,8 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
             "that it is a PENDING or retryable FAILED selfie attempt for the stated token and "
             "holder, then call verify_pending_proof. The trusted backend will verify with World, "
             "refresh the liveness timestamp, cancel the prior reclaim schedule, and arm the next "
-            "deadline. Re-read the holder with hedera get_token and report the resulting liveness "
+            "deadline. Re-read the holder with hedera get_token for a 0.0.x token or evm get_token "
+            "for a 0x contract, and report the resulting liveness "
             "state. Never ask for raw proof JSON, never change any financial parameter, and do not "
             "send, distribute, whitelist, revoke, or reclaim a token in this workflow."
         ),
@@ -766,13 +783,13 @@ def build_hermes_env() -> dict[str, str]:
 
 def write_env(path: Path, data: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    cat_order = ["model", "provider", "hedera", "worldid", "subgraph", "token",
+    cat_order = ["model", "provider", "hedera", "evm", "worldid", "subgraph", "token",
                  "bedrock", "azure", "custom", "tool",
                  "telegram", "discord", "slack", "whatsapp",
                  "email", "mattermost", "matrix", "gateway", "admin"]
     cat_labels = {
         "model": "Model", "provider": "Providers",
-        "hedera": "Hedera operator", "worldid": "World ID",
+        "hedera": "Hedera operator", "evm": "Ethereum Sepolia", "worldid": "World ID",
         "subgraph": "Subgraph (The Graph)",
         "token": "Next token defaults",
         "bedrock": "AWS Bedrock", "azure": "Azure Foundry",
@@ -2722,6 +2739,8 @@ routes = [
     Route("/tokens/{path:path}",                route_tokenization,  methods=ANY_METHOD),
     Route("/api/tokens",                        route_tokenization,  methods=ANY_METHOD),
     Route("/api/tokens/{path:path}",            route_tokenization,  methods=ANY_METHOD),
+    Route("/api/evm",                           route_tokenization,  methods=ANY_METHOD),
+    Route("/api/evm/{path:path}",               route_tokenization,  methods=ANY_METHOD),
     Route("/api/worldid",                       route_tokenization,  methods=ANY_METHOD),
     Route("/api/worldid/{path:path}",           route_tokenization,  methods=ANY_METHOD),
     Route("/api/runtime-config",                route_tokenization,  methods=ANY_METHOD),

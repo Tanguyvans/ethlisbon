@@ -17,7 +17,7 @@ Deploy [Hermes Agent](https://github.com/NousResearch/hermes-agent) on [Railway]
 - **Live Status** — stat cards for gateway state, uptime, model, and pending pairing requests
 - **Live Logs** — streaming gateway log viewer
 - **User Pairing** — approve or deny users who message your bot, revoke access anytime
-- **Hedera Tokenization Storefront** — the integrated Next.js tokenization platform lives at the root domain; visitors connect a Hedera wallet and acquire available tokens (token creation is an operator-only API call, not a public UI action)
+- **Multi-chain Tokenization Storefront** — the integrated Next.js platform supports Hedera testnet and Ethereum Sepolia; creation remains an operator-only Hermes action
 - **Cookie Auth** — password-protected Hermes dashboard and setup
 - **Public Tokenization UI** — wallet users can open the root URL without the Hermes admin login; the admin dashboard itself lives at `/hermes`
 - **Reset Config** — one-click reset to start fresh
@@ -74,6 +74,8 @@ Message your Telegram bot. If you're a new user, a pairing request will appear i
 | `HEDERA_OPERATOR_ID` | *(required for token actions)* | Server-side operator/treasury account ID. |
 | `HEDERA_OPERATOR_KEY` | *(required for token actions)* | Server-side operator private key. Never expose it to the browser or agent chat. |
 | `WALLETCONNECT_PROJECT_ID` | *(required for wallet connection)* | Reown project ID served to the wallet client at runtime. |
+| `SEPOLIA_RPC_URL` | *(required for EVM actions)* | Ethereum Sepolia JSON-RPC endpoint. |
+| `EVM_OPERATOR_PRIVATE_KEY` | *(required for EVM actions)* | Funded Sepolia treasury/operator key. Server-side only. |
 | `TOKENIZATION_APP_URL` | *(derived from browser URL)* | Optional canonical public URL (your root deploy URL), used in wallet metadata. |
 | `DATABASE_PATH` | `/data/tokenization/tokenization.db` | Persistent SQLite database path in the Railway volume. |
 | `LIVENESS_SWEEP_INTERVAL_SECONDS` | `15` | Internal recurring-Selfie expiry sweep interval; minimum 10 seconds. |
@@ -100,10 +102,10 @@ Availability can expand as World adds document support.
 Selfie Check can also be made recurring. The creator chooses the exact renewal
 period in seconds (minimum 60; `300` gives a five-minute demo). Each new proof
 is verified through Hermes and World before the deadline moves. A holder first
-approves a Hedera token allowance; if the verified selfie expires, the internal
-worker returns the holder's live balance to treasury and revokes access. For
-periods up to 60 days, an on-chain Hedera Scheduled Transaction is armed as an
-additional safety net.
+approves a Hedera or ERC-20 token allowance; if the verified selfie expires,
+the internal worker returns the holder's live balance to treasury and revokes
+access. For Hedera periods up to 60 days, an on-chain Scheduled Transaction is
+armed as an additional safety net; Sepolia uses ERC-20 `transferFrom`.
 
 ## Supported Providers
 

@@ -98,7 +98,7 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
           <div>
             <span className="proof-live-dot" aria-hidden="true" />
             <p>Network</p>
-            <strong>Hedera testnet</strong>
+            <strong>Hedera + Sepolia</strong>
           </div>
           <div>
             <span className="proof-sim-dot" aria-hidden="true" />
@@ -154,14 +154,14 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
                     <span className={`rwa-asset-chip ${accent.chip}`}>{assetType}</span>
                     <h3>{token.name}</h3>
                     <p className="rwa-description">
-                      {token.memo || "A real-world asset token deployed on Hedera Token Service."}
+                      {token.memo || `A real-world asset token deployed on ${token.blockchain === "EVM" ? "Ethereum Sepolia" : "Hedera Token Service"}.`}
                     </p>
                   </div>
 
                   <dl className="rwa-meta">
                     <div>
-                      <dt>Token type</dt>
-                      <dd>{token.tokenType === "NFT" ? "NFT" : "Fungible"}</dd>
+                      <dt>Network</dt>
+                      <dd>{token.blockchain === "EVM" ? "Sepolia" : "Hedera"}</dd>
                     </div>
                     <div>
                       <dt>Initial supply</dt>

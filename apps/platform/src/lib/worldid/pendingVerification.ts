@@ -110,7 +110,8 @@ export async function executeWorldIdVerification(
       throw new WorldProofError("The queued World ID proof is missing.", 409, "missing_proof");
     }
 
-    const expectedSignal = worldIdHolderSignal(claimed.tokenId, claimed.accountId);
+    if (!liveToken) throw new ApiError("The token for this proof no longer exists.", 404);
+    const expectedSignal = worldIdHolderSignal(liveToken, claimed.accountId);
     if (
       claimed.expectedSignal !== expectedSignal ||
       claimed.action !== expectedWorldAction(claimed.check)

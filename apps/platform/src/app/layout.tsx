@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 import { WalletProvider } from "@/hooks/useWalletConnect";
+import { EvmWalletProvider } from "@/hooks/useEvmWallet";
 import WalletConnectButton from "@/components/WalletConnectButton";
 
 export const metadata: Metadata = {
-  title: "RWA Access Desk · Hedera",
+  title: "RWA Access Desk · Hedera + Sepolia",
   description:
     "Explore tokenized real-world assets and prove private eligibility conditions with World ID.",
 };
@@ -15,6 +16,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" className="h-full antialiased">
       <body className="app-shell">
         <WalletProvider>
+          <EvmWalletProvider>
           <header className="app-header">
             <div className="app-header-inner">
               <Link href="/" className="app-brand" aria-label="RWA Access Desk home">
@@ -30,7 +32,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   </span>
                   <span className="app-brand-network">
                     <span className="app-network-dot" aria-hidden="true" />
-                    Hedera testnet
+                    Hedera + Sepolia
                   </span>
                 </span>
               </Link>
@@ -64,8 +66,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <main className="app-main">{children}</main>
           <footer className="app-footer">
             <span>RWA Access Desk</span>
-            <span>Hedera Token Service · Test environment</span>
+            <span>Hedera Token Service · Ethereum Sepolia</span>
           </footer>
+          </EvmWalletProvider>
         </WalletProvider>
       </body>
     </html>

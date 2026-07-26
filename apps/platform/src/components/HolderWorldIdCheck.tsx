@@ -54,7 +54,7 @@ export default function HolderWorldIdCheck({
     rpContext: RpContext;
   } | null>(null);
   const serverError = useRef<string | null>(null);
-  const signal = worldIdHolderSignal(token.id, accountId);
+  const signal = worldIdHolderSignal(token, accountId);
   const submitted =
     pendingVerification?.status === "PENDING" ||
     pendingVerification?.status === "PROCESSING" ||

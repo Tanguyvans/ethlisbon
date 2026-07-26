@@ -10,7 +10,7 @@ The public Next.js application owns:
 
 - the token storefront and holder wallet connection;
 - the token and holder APIs;
-- Hedera transactions and the SQLite database;
+- Hedera transactions, Sepolia ERC-20 transactions, and the SQLite database;
 - World ID proof collection, private proof storage, and calls to World APIs.
 
 World credentials and raw proofs stay in this trusted backend. They are never
@@ -23,7 +23,7 @@ The private Python application owns:
 - the Hermes dashboard and gateway lifecycle;
 - authentication for the operator console;
 - the public reverse proxy to the platform;
-- the Hedera and World ID adapters under `mcp/`, used by Hermes.
+- the Hedera, EVM, World ID, and Subgraph adapters under `mcps/`, used by Hermes.
 
 The World ID MCP receives sanitized verification records. It asks the platform
 to verify a queued proof; it does not own World secrets or raw proofs.

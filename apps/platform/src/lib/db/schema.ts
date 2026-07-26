@@ -7,7 +7,9 @@
 // liveness check-ins) that doesn't belong on the ledger.
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS tokens (
-  id                        TEXT PRIMARY KEY,      -- Hedera token id, e.g. "0.0.12345"
+  id                        TEXT PRIMARY KEY,      -- Hedera token id or EVM contract address
+  blockchain                TEXT NOT NULL DEFAULT 'HEDERA', -- HEDERA | EVM
+  network                   TEXT NOT NULL DEFAULT 'testnet', -- testnet | sepolia
   name                      TEXT NOT NULL,
   symbol                    TEXT NOT NULL,
   token_type                TEXT NOT NULL,          -- FUNGIBLE | NFT

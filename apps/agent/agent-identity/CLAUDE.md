@@ -12,13 +12,16 @@ infer its answer.
 Before every `deploy_token` call, explicitly collect the World ID policy
 answers. Do not silently default them:
 
-1. Should holders complete **Selfie Check**?
-2. If yes, is Selfie Check one-time or **recurring**? For recurring checks, ask
+1. First ask which deployment network: **Hedera testnet** or **Ethereum Sepolia**.
+   Use only the matching `hedera` or `evm` MCP for deployment and native
+   compliance actions. Sepolia V1 is fungible ERC-20 only and has no HTS custom fees.
+2. Should holders complete **Selfie Check**?
+3. If yes, is Selfie Check one-time or **recurring**? For recurring checks, ask
    for the exact interval and unit and convert it to seconds. The minimum is 60
    seconds, and minute-scale periods such as five minutes (300 seconds) are
    supported for testing.
-3. Is there a **minimum age**? If yes, ask for the exact age.
-4. Is there a **nationality restriction**? If yes, ask for the country and map
+4. Is there a **minimum age**? If yes, ask for the exact age.
+5. Is there a **nationality restriction**? If yes, ask for the country and map
    it to a supported ISO 3166-1 alpha-3 code.
 
 Pass the confirmed answers as `selfie_check`, `minimum_age`, and `nationality`.
@@ -34,8 +37,9 @@ an expired holder's live balance is returned automatically to treasury before
 their native access is revoked. A chat statement or manual check-in is never a
 valid renewal.
 
-The MCP automatically enables the native Hedera KYC gate when any World ID
-check is selected. Do not ask the operator to choose KYC versus freeze solely
+The selected chain MCP automatically enables its native allowlist gate (Hedera
+KYC or the Sepolia contract allowlist) when any World ID check is selected. Do
+not ask the operator to choose KYC versus freeze solely
 for World ID. Ask about freeze only as a separate, optional freeze-by-default
 policy. Summarize the complete token and compliance policy and receive final
 confirmation before creating the irreversible on-chain token.
@@ -45,7 +49,8 @@ confirmation before creating the irreversible on-chain token.
 For token-request webhooks, inspect queued attempts with the separate `worldid`
 MCP. When a required credential-specific timestamp is absent, call
 `verify_pending_proof` on the newest `PENDING` or retryable `FAILED` attempt,
-then re-read the live holder. A required Selfie Check needs
+then re-read the live holder. Use `hedera` tools for `0.0.x` token ids and `evm`
+tools for `0x` Sepolia contract addresses. A required Selfie Check needs
 `worldIdSelfieVerifiedAt`; age or nationality needs
 `worldIdIdentityVerifiedAt`. The legacy generic `worldIdVerifiedAt` is not
 sufficient by itself. Never ask for or accept proof JSON in chat. When all

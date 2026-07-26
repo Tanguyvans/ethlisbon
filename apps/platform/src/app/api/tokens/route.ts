@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { handleRoute, readJson } from "@/lib/api/helpers";
+import { ApiError, handleRoute, readJson } from "@/lib/api/helpers";
 import { insertEvent, insertToken, listTokens } from "@/lib/db/repo";
 import { createToken } from "@/lib/hedera/tokenService";
 import { getOperatorId } from "@/lib/hedera/client";
 import { createTokenSchema } from "@/lib/validation";
+import { configuredHederaNetwork } from "@/lib/chains";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,9 @@ export async function POST(req: Request) {
   return handleRoute(async () => {
     const body = await readJson<unknown>(req);
     const input = createTokenSchema.parse(body);
+    if (input.blockchain !== "HEDERA") {
+      throw new ApiError("Use /api/evm/tokens to deploy a Sepolia ERC-20 token.", 400);
+    }
 
     const created = await createToken({
       name: input.name,
@@ -31,6 +35,8 @@ export async function POST(req: Request) {
 
     const token = insertToken({
       id: created.tokenId,
+      blockchain: "HEDERA",
+      network: configuredHederaNetwork(),
       name: input.name,
       symbol: input.symbol,
       tokenType: input.tokenType,

@@ -77,7 +77,7 @@ export async function POST(
       accountId,
       check,
       action: expectedWorldAction(check),
-      expectedSignal: worldIdHolderSignal(tokenId, accountId),
+      expectedSignal: worldIdHolderSignal(token, accountId),
       proofJson,
       proofHash,
     });
