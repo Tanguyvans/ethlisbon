@@ -12,11 +12,14 @@ Two parts:
   same handler). `Account.balance` is derived from transfers (mints/burns to/from the zero
   address are tracked but excluded from balance math for the non-zero side, and flagged via
   `Transfer.isMintOrBurn` so you can filter them out of things like "biggest transfer").
-- `mcp-server/` — an MCP server exposing tools that query the deployed subgraph's GraphQL
-  endpoint (`get_token_info`, `get_biggest_transfer`, `get_top_holders`, `get_recent_transfers`,
-  `get_account_balance`), tools that mutate and redeploy the subgraph itself (`get_tracked_tokens`,
-  `add_token_source`, `set_token_sources`), and `get_deployment_status` to confirm what's *actually*
-  live on Graph Studio versus what's just locally configured.
+- `mcp-server/` — two independent MCP servers sharing a `common.ts` GraphQL client:
+  - `src/read.ts` (`subgraph_read`) — query-only tools: `get_token_info`, `get_biggest_transfer`,
+    `get_top_holders`, `get_recent_transfers`, `get_account_balance`, `get_latest_sepolia_block`,
+    `get_tracked_tokens` (reads local `subgraph.yaml`), and `get_deployment_status` (confirms
+    what's *actually* live on Graph Studio versus what's just locally configured). Never imports
+    `node:child_process` — safe to hand to a read-only agent profile.
+  - `src/write.ts` (`subgraph_write`) — `add_token_source` / `set_token_sources`, which edit
+    `subgraph.yaml` and shell out to the graph-cli to redeploy. Requires `GRAPH_DEPLOY_KEY`.
 
 ## 1. Deploy the subgraph
 
@@ -46,27 +49,37 @@ Studio always resolves `version/latest` to whichever version was deployed most r
 both forms after every deploy as a reminder. Queries against Studio's own endpoint are free — no
 GRT/billing needed for this experiment.
 
-## 2. Run the MCP server
+## 2. Run the MCP server(s)
 
 ```bash
 cd mcp-server
 npm install
-SUBGRAPH_URL="<query url from step 1>" npm start
+SUBGRAPH_URL="<query url from step 1>" npm run start:read
+# and, only for an agent that's allowed to add/remove tracked tokens:
+SUBGRAPH_URL="<query url from step 1>" GRAPH_DEPLOY_KEY="<deploy key>" npm run start:write
 ```
 
-To wire it into Claude Code, add an entry to your MCP config pointing at this server, e.g.:
+To wire these into Claude Code, add entries to your MCP config pointing at each server, e.g.:
 
 ```json
 {
   "mcpServers": {
-    "graph-experiments": {
+    "graph-experiments-read": {
       "command": "npx",
-      "args": ["tsx", "/absolute/path/to/graph_experiments/mcp-server/src/index.ts"],
+      "args": ["tsx", "/absolute/path/to/graph_experiments/mcp-server/src/read.ts"],
       "env": { "SUBGRAPH_URL": "<query url from step 1>" }
+    },
+    "graph-experiments-write": {
+      "command": "npx",
+      "args": ["tsx", "/absolute/path/to/graph_experiments/mcp-server/src/write.ts"],
+      "env": { "SUBGRAPH_URL": "<query url from step 1>", "GRAPH_DEPLOY_KEY": "<deploy key>" }
     }
   }
 }
 ```
+
+Give an agent only `graph-experiments-read` if it should be able to answer questions about
+tracked tokens but never change what's indexed or spend the deploy key.
 
 ## Adding/removing tracked tokens
 

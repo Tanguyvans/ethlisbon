@@ -71,6 +71,19 @@ if [ -d /opt/hermes-agent-identity ]; then
   done
 fi
 
+# Same idiom, for the separate locked-down `pr` (public-relations) Hermes
+# profile — its own home under $HERMES_HOME/profiles/pr/ (config.yaml is
+# written by server.py's write_pr_config_yaml on every gateway start; here we
+# only seed its dirs and project-context identity file). AGENTS.md is
+# refreshed every boot (deployment-managed persona, same as CLAUDE.md above)
+# since it's the one thing keeping this profile scoped to "answer questions,
+# never act" — never leave a stale/tampered copy in place across a redeploy.
+mkdir -p /data/.hermes/profiles/pr/workspace /data/.hermes/profiles/pr/sessions \
+         /data/.hermes/profiles/pr/logs /data/.hermes/profiles/pr/memories
+if [ -f /opt/hermes-agent-identity-pr/AGENTS.md ]; then
+  cp /opt/hermes-agent-identity-pr/AGENTS.md /data/.hermes/profiles/pr/workspace/AGENTS.md
+fi
+
 # Bootstrap OAuth tokens from env var (e.g. xAI Grok SuperGrok).
 # Set HERMES_AUTH_JSON_BOOTSTRAP to the contents of a locally-generated
 # ~/.hermes/auth.json. Written only once — subsequent token refreshes update
@@ -119,7 +132,8 @@ fi
 # survives container restarts and causes every subsequent boot to exit with
 # "ERROR gateway.run: PID file race lost to another gateway instance".
 # No hermes process can be running at this point (we're pre-exec in a fresh
-# container), so removing the file unconditionally is safe.
-rm -f /data/.hermes/gateway.pid
+# container), so removing the file unconditionally is safe. Same for the `pr`
+# profile's own gateway.pid (profiles have independent pid locks).
+rm -f /data/.hermes/gateway.pid /data/.hermes/profiles/pr/gateway.pid
 
 exec python /app/server.py

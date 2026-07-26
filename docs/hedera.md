@@ -20,7 +20,10 @@
 - `apps/platform/src/lib/walletconnect/connector.ts` — Hedera WalletConnect configuration.
 - `apps/platform/src/app/api/tokens/` — public and operator token lifecycle API routes.
 - `apps/platform/src/lib/tokenRequests.ts` — idempotent Hermes mint-and-transfer fulfillment.
-- `apps/agent/mcps/hedera/server.py` — Hedera MCP tools exposed to Hermes.
+- `apps/agent/mcps/hedera/{read_server,write_server}.py` — Hedera MCP tools exposed to
+  Hermes, split into read-only (bookkeeping/Mirror Node lookups) and write
+  (deploy/whitelist/distribute/reclaim/pause) servers so a read-only agent profile can
+  be granted analytics access without any path to mutate token state.
 
 ## Tracks addressed
 

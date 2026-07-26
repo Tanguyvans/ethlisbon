@@ -53,6 +53,7 @@ import zipfile
 from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any, Callable
 
 import httpx
 import websockets
@@ -155,6 +156,27 @@ TOKEN_REQUEST_WEBHOOK_SECRET = (
 TOKEN_REQUEST_WEBHOOK_URL = "http://127.0.0.1:8644/webhooks/token-request"
 LIVENESS_VERIFICATION_WEBHOOK_URL = "http://127.0.0.1:8644/webhooks/liveness-verification"
 
+# ── Public-relations ("pr") Hermes profile ───────────────────────────────────
+# A second, locked-down Hermes profile — its own $HERMES_HOME/profiles/pr/
+# directory (own config.yaml, .env, workspace, sessions, memories) — that only
+# ever gets the read-only MCPs (hedera_read/evm_read/subgraph_read; never
+# worldid or any *_write server) and has its terminal/file/browser/etc.
+# toolsets disabled (see write_pr_config_yaml, build_pr_env, PrGateway). It
+# exposes an OpenAI-compatible API server on a private loopback port that the
+# tokenization platform's gated /api/tokens/[id]/chat route proxies to — no
+# holder input is ever forwarded to the operator gateway, and no code path in
+# this profile's process tree can deploy/mint/transfer/reclaim/pause/whitelist.
+PR_PROFILE = "pr"
+PR_HOME = Path(HERMES_HOME) / "profiles" / PR_PROFILE
+PR_WORKDIR = str(PR_HOME / "workspace")
+PR_API_SERVER_HOST = "127.0.0.1"
+PR_API_SERVER_PORT = int(os.environ.get("PR_API_SERVER_PORT", "8643"))
+PR_API_SERVER_URL = f"http://{PR_API_SERVER_HOST}:{PR_API_SERVER_PORT}"
+# Bearer token hermes' api_server platform requires for every request, even on
+# loopback (it refuses to start without one). Shared with the tokenization app
+# below so its chat route can authenticate to this profile.
+PR_API_SERVER_KEY = os.environ.get("PR_API_SERVER_KEY") or secrets.token_urlsafe(32)
+
 # Header hermes' own SPA uses to present its per-process session token
 # (hermes_cli/web_server.py's _SESSION_HEADER_NAME) — see
 # set_active_model_via_hermes()/_get_hermes_session_token() for why our own
@@ -202,9 +224,10 @@ ENV_VARS = [
     ("WORLD_RP_SIGNING_KEY",      "World RP signing key",      "worldid",   True),
     ("WORLD_ACTION",              "Selfie action",             "worldid",   False),
     ("WORLD_IDENTITY_ACTION",     "Identity action",           "worldid",   False),
-    # ── Subgraph MCP (The Graph) — read config.yaml's mcp_servers.subgraph ──
-    # SUBGRAPH_URL is the stable ".../version/latest" Studio query URL (see the
-    # TS server's docstrings); GRAPH_DEPLOY_KEY authorizes the deploy tools.
+    # ── Subgraph MCP (The Graph) — read config.yaml's mcp_servers.subgraph_read /
+    # mcp_servers.subgraph_write ── SUBGRAPH_URL is the stable ".../version/latest"
+    # Studio query URL (see the TS servers' docstrings); GRAPH_DEPLOY_KEY authorizes
+    # subgraph_write's deploy tools only (see write_config_yaml).
     ("SUBGRAPH_URL",             "Subgraph query URL",       "subgraph",  False),
     ("GRAPH_DEPLOY_KEY",         "Graph deploy key",         "subgraph",  True),
     ("GRAPH_SUBGRAPH_NAME",      "Subgraph name",            "subgraph",  False),
@@ -301,6 +324,16 @@ ENV_VARS = [
 
 SECRET_KEYS  = {k for k, _, _, s in ENV_VARS if s}
 PROVIDER_KEYS = [k for k, _, c, _ in ENV_VARS if c == "provider"]
+
+# Env keys the locked-down `pr` profile is allowed to inherit — LLM
+# model/provider credentials only. Deliberately excludes every chain/compliance
+# category ("hedera", "evm", "worldid", "subgraph", "token"), every messaging
+# platform, "gateway" (GATEWAY_ALLOW_ALL_USERS), "admin" (ADMIN_PASSWORD), and
+# "tool" (web/browser/search keys for toolsets the pr profile has disabled
+# anyway) — see build_pr_env(). A category being harmless today is not a
+# reason to include it: the pr profile should only ever see what it needs.
+PR_SAFE_ENV_CATEGORIES = {"model", "provider", "bedrock", "azure", "custom"}
+PR_SAFE_ENV_KEYS = {k for k, _, c, _ in ENV_VARS if c in PR_SAFE_ENV_CATEGORIES}
 
 WORLD_ID_NATIONALITIES = {
     "ARG", "AUS", "CHL", "COL", "CRI", "GBR", "HRV", "ITA",
@@ -604,76 +637,74 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
 
     # Seed/update only the deployment-managed parts of the chain and World ID MCP entries.
     # Other MCP servers and optional keys on these entries remain untouched.
+    #
+    # hedera and evm are each split into a read-only and a write (state-mutating) MCP
+    # server (mcps/{hedera,evm}/{read_server,write_server}.py) so a read-only agent
+    # profile (see the `pr` profile below) can be handed hedera_read/evm_read without
+    # ever getting a code path to deploy/whitelist/distribute/reclaim/pause. Both
+    # halves of a pair get the same TOKENIZATION_BASE_URL/AGENT_SECRET env — the
+    # isolation is which MCP is registered at all, not the secret.
     mcp_servers = merged.get("mcp_servers")
     if not isinstance(mcp_servers, dict):
         mcp_servers = {}
-    hedera_mcp = mcp_servers.get("hedera")
-    if not isinstance(hedera_mcp, dict):
-        hedera_mcp = {}
-    hedera_mcp.setdefault("command", "python")
-    hedera_mcp.setdefault("args", ["/app/hedera_mcp.py"])
-    hedera_env = hedera_mcp.get("env")
-    if not isinstance(hedera_env, dict):
-        hedera_env = {}
-    hedera_env["TOKENIZATION_BASE_URL"] = TOKENIZATION_URL
-    hedera_env["TOKENIZATION_AGENT_SECRET"] = TOKENIZATION_AGENT_SECRET
-    hedera_mcp["env"] = hedera_env
-    mcp_servers["hedera"] = hedera_mcp
 
-    evm_mcp = mcp_servers.get("evm")
-    if not isinstance(evm_mcp, dict):
-        evm_mcp = {}
-    evm_mcp.setdefault("command", "python")
-    evm_mcp.setdefault("args", ["/app/evm_mcp.py"])
-    evm_env = evm_mcp.get("env")
-    if not isinstance(evm_env, dict):
-        evm_env = {}
-    evm_env["TOKENIZATION_BASE_URL"] = TOKENIZATION_URL
-    evm_env["TOKENIZATION_AGENT_SECRET"] = TOKENIZATION_AGENT_SECRET
-    evm_mcp["env"] = evm_env
-    mcp_servers["evm"] = evm_mcp
+    def _ensure_mcp_entry(key: str, command: str, args: list[str], env_updates: dict[str, str]) -> dict[str, Any]:
+        entry = mcp_servers.get(key)
+        if not isinstance(entry, dict):
+            entry = {}
+        entry.setdefault("command", command)
+        entry.setdefault("args", args)
+        env = entry.get("env")
+        if not isinstance(env, dict):
+            env = {}
+        env.update(env_updates)
+        entry["env"] = env
+        mcp_servers[key] = entry
+        return entry
 
-    worldid_mcp = mcp_servers.get("worldid")
-    if not isinstance(worldid_mcp, dict):
-        worldid_mcp = {}
-    worldid_mcp.setdefault("command", "python")
-    worldid_mcp.setdefault("args", ["/app/worldid_mcp.py"])
-    worldid_env = worldid_mcp.get("env")
-    if not isinstance(worldid_env, dict):
-        worldid_env = {}
-    worldid_env["TOKENIZATION_BASE_URL"] = TOKENIZATION_URL
-    worldid_env["TOKENIZATION_AGENT_SECRET"] = TOKENIZATION_AGENT_SECRET
-    worldid_mcp["env"] = worldid_env
-    mcp_servers["worldid"] = worldid_mcp
+    tokenization_env = {
+        "TOKENIZATION_BASE_URL": TOKENIZATION_URL,
+        "TOKENIZATION_AGENT_SECRET": TOKENIZATION_AGENT_SECRET,
+    }
+    _ensure_mcp_entry("hedera_read", "python", ["/app/mcps/hedera/read_server.py"], tokenization_env)
+    _ensure_mcp_entry("hedera_write", "python", ["/app/mcps/hedera/write_server.py"], tokenization_env)
+    _ensure_mcp_entry("evm_read", "python", ["/app/mcps/evm/read_server.py"], tokenization_env)
+    _ensure_mcp_entry("evm_write", "python", ["/app/mcps/evm/write_server.py"], tokenization_env)
+    _ensure_mcp_entry("worldid", "python", ["/app/worldid_mcp.py"], tokenization_env)
 
-    # The subgraph MCP is the upstream TypeScript server, run as-is: Hermes
-    # launches it via tsx (baked into the image at /opt/subgraph-mcp). Unlike
-    # hedera/worldid it does NOT talk to the loopback Next.js app — it queries
-    # Graph Studio directly (SUBGRAPH_URL) and, for the deploy tools, shells out
-    # to graph-cli in SUBGRAPH_DIR. SUBGRAPH_DIR is deployment-managed (the
-    # writable, volume-backed copy start.sh seeds); the rest come from .env when
-    # set, and we never wipe an operator's manually-set config.yaml value with an
-    # empty one.
-    subgraph_mcp = mcp_servers.get("subgraph")
-    if not isinstance(subgraph_mcp, dict):
-        subgraph_mcp = {}
-    subgraph_mcp.setdefault("command", "/opt/subgraph-mcp/node_modules/.bin/tsx")
-    subgraph_mcp.setdefault("args", ["/opt/subgraph-mcp/src/index.ts"])
-    subgraph_env = subgraph_mcp.get("env")
-    if not isinstance(subgraph_env, dict):
-        subgraph_env = {}
-    subgraph_env["SUBGRAPH_DIR"] = "/data/subgraph"
-    # Fall back to os.environ so an operator who sets these directly as Railway
-    # env vars (not via the setup wizard's .env) still has them injected into the
-    # MCP's env block — unlike the loopback Next.js app, the MCP subprocess only
-    # gets what hermes passes from config.yaml, so we can't rely on process-env
-    # passthrough alone.
-    for _key in ("SUBGRAPH_URL", "SEPOLIA_RPC_URL", "GRAPH_DEPLOY_KEY", "GRAPH_SUBGRAPH_NAME"):
-        _value = (data.get(_key) or os.environ.get(_key, "")).strip()
+    # The subgraph MCP is the upstream TypeScript server, run as-is: Hermes launches
+    # each half via tsx (baked into the image at /opt/subgraph-mcp/src/{read,write}.ts).
+    # Unlike hedera/worldid it does NOT talk to the loopback Next.js app — it queries
+    # Graph Studio directly (SUBGRAPH_URL) and, for the write half's deploy tools,
+    # shells out to graph-cli in SUBGRAPH_DIR. SUBGRAPH_DIR is deployment-managed (the
+    # writable, volume-backed copy start.sh seeds); the rest come from .env when set,
+    # and we never wipe an operator's manually-set config.yaml value with an empty one.
+    #
+    # GRAPH_DEPLOY_KEY is intentionally only ever injected into subgraph_write's env —
+    # subgraph_read's add_token_source/set_token_sources tools don't exist, so it has
+    # no use for the key, and never receiving it is a second, independent guard beyond
+    # "the tools aren't registered."
+    tsx_bin = "/opt/subgraph-mcp/node_modules/.bin/tsx"
+    # Fall back to os.environ so an operator who sets these directly as Railway env
+    # vars (not via the setup wizard's .env) still has them injected into the MCP's
+    # env block — unlike the loopback Next.js app, the MCP subprocess only gets what
+    # hermes passes from config.yaml, so we can't rely on process-env passthrough alone.
+    def _env_or_os(key: str) -> str:
+        return (data.get(key) or os.environ.get(key, "")).strip()
+
+    subgraph_common_env = {"SUBGRAPH_DIR": "/data/subgraph"}
+    for _key in ("SUBGRAPH_URL", "SEPOLIA_RPC_URL"):
+        _value = _env_or_os(_key)
         if _value:
-            subgraph_env[_key] = _value
-    subgraph_mcp["env"] = subgraph_env
-    mcp_servers["subgraph"] = subgraph_mcp
+            subgraph_common_env[_key] = _value
+    _ensure_mcp_entry("subgraph_read", tsx_bin, ["/opt/subgraph-mcp/src/read.ts"], subgraph_common_env)
+
+    subgraph_write_env = dict(subgraph_common_env)
+    for _key in ("GRAPH_DEPLOY_KEY", "GRAPH_SUBGRAPH_NAME"):
+        _value = _env_or_os(_key)
+        if _value:
+            subgraph_write_env[_key] = _value
+    _ensure_mcp_entry("subgraph_write", tsx_bin, ["/opt/subgraph-mcp/src/write.ts"], subgraph_write_env)
 
     merged["mcp_servers"] = mcp_servers
 
@@ -764,6 +795,128 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
     with config_path.open("w") as f:
         yaml.safe_dump(merged, f, sort_keys=False, default_flow_style=False)
 
+    # Keep the locked-down `pr` profile's config in sync on every gateway start,
+    # same as the operator config above. Reuses the model block we just resolved
+    # (model choice isn't security-sensitive — sharing it just means the public
+    # chat uses the same LLM the operator configured) but writes an entirely
+    # separate mcp_servers/toolset story to its own profile directory.
+    write_pr_config_yaml(dict(merged_model))
+
+
+# Toolsets that must never be reachable from the `pr` profile: terminal and
+# file give a model a way to shell out to (or read/write) anything the OS user
+# can touch — including `curl`-ing the tokenization app's write endpoints
+# directly, bypassing the "only read MCPs are registered" guarantee entirely.
+# The rest are "outbound-action" toolsets the pr agent has no legitimate use
+# for (see the Hermes docs' own recommendation to disable terminal/file/
+# outbound-action tools on any session that only needs to read and summarize).
+PR_DISABLED_TOOLSETS = [
+    "terminal", "file", "browser", "web", "code_execution",
+    "delegation", "cronjob", "messaging", "discord", "discord_admin",
+    "homeassistant", "spotify", "image_gen",
+]
+
+
+def write_pr_config_yaml(model_block: dict[str, Any]) -> None:
+    """Write the `pr` profile's config.yaml — same deep-merge idiom as
+    write_config_yaml (preserve unknown top-level keys / any operator-added
+    mcp_servers entry), but a deliberately much smaller deployment-managed
+    surface: only hedera_read/evm_read/subgraph_read are ever registered here
+    — never worldid or any *_write server — and agent.disabled_toolsets is
+    force-unioned (not merely setdefault) with PR_DISABLED_TOOLSETS on every
+    write, so a stale or hand-edited config can't silently drop the guard.
+    """
+    import yaml  # deferred import, same rationale as write_config_yaml
+
+    config_path = PR_HOME / "config.yaml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    Path(PR_WORKDIR).mkdir(parents=True, exist_ok=True)
+
+    existing: dict = {}
+    if config_path.exists():
+        try:
+            with config_path.open() as f:
+                loaded = yaml.safe_load(f)
+            if isinstance(loaded, dict):
+                existing = loaded
+        except (yaml.YAMLError, OSError):
+            existing = {}
+
+    merged = dict(existing)
+    merged["model"] = dict(model_block)
+
+    merged_terminal = dict(merged.get("terminal") if isinstance(merged.get("terminal"), dict) else {})
+    merged_terminal["backend"] = "local"
+    merged_terminal["timeout"] = 60
+    merged_terminal["cwd"] = PR_WORKDIR
+    merged["terminal"] = merged_terminal
+
+    merged_agent = dict(merged.get("agent") if isinstance(merged.get("agent"), dict) else {})
+    merged_agent.setdefault("max_iterations", 50)
+    existing_disabled = merged_agent.get("disabled_toolsets")
+    if not isinstance(existing_disabled, list):
+        existing_disabled = []
+    # Union, never subtract — this list only ever grows across restarts.
+    merged_agent["disabled_toolsets"] = sorted(set(existing_disabled) | set(PR_DISABLED_TOOLSETS))
+    merged["agent"] = merged_agent
+
+    merged["data_dir"] = str(PR_HOME)
+
+    mcp_servers = merged.get("mcp_servers")
+    if not isinstance(mcp_servers, dict):
+        mcp_servers = {}
+
+    def _ensure_entry(key: str, command: str, args: list[str], env_updates: dict[str, str]) -> None:
+        entry = mcp_servers.get(key)
+        if not isinstance(entry, dict):
+            entry = {}
+        entry.setdefault("command", command)
+        entry.setdefault("args", args)
+        env = entry.get("env")
+        if not isinstance(env, dict):
+            env = {}
+        env.update(env_updates)
+        entry["env"] = env
+        mcp_servers[key] = entry
+
+    tokenization_env = {
+        "TOKENIZATION_BASE_URL": TOKENIZATION_URL,
+        # list_token_requests/get_token_request on hedera_read/evm_read hit the
+        # same requireAgentRequest-guarded GET routes the write tools use — this
+        # secret gates "is this an authenticated backend caller" for the whole
+        # agent-only API surface, not read-vs-write, so hedera_read/evm_read
+        # need it to function. It grants no capability beyond what the
+        # registered tool FUNCTIONS below can call, and no *_write server is
+        # ever registered here.
+        "TOKENIZATION_AGENT_SECRET": TOKENIZATION_AGENT_SECRET,
+    }
+    _ensure_entry("hedera_read", "python", ["/app/mcps/hedera/read_server.py"], tokenization_env)
+    _ensure_entry("evm_read", "python", ["/app/mcps/evm/read_server.py"], tokenization_env)
+
+    # SUBGRAPH_URL/SEPOLIA_RPC_URL are public, non-secret values (a query
+    # endpoint and a public RPC URL) — check the operator's .env same as
+    # write_config_yaml does, falling back to os.environ for a Railway-set var.
+    operator_env = read_env(ENV_FILE)
+    subgraph_env = {"SUBGRAPH_DIR": "/data/subgraph"}
+    for _key in ("SUBGRAPH_URL", "SEPOLIA_RPC_URL"):
+        _value = (operator_env.get(_key) or os.environ.get(_key, "")).strip()
+        if _value:
+            subgraph_env[_key] = _value
+    # Deliberately never given GRAPH_DEPLOY_KEY — subgraph_read has no tool that
+    # could use it, and not receiving it is a second, independent guard beyond
+    # "the deploy tools aren't registered".
+    _ensure_entry(
+        "subgraph_read",
+        "/opt/subgraph-mcp/node_modules/.bin/tsx",
+        ["/opt/subgraph-mcp/src/read.ts"],
+        subgraph_env,
+    )
+
+    merged["mcp_servers"] = mcp_servers
+
+    with config_path.open("w") as f:
+        yaml.safe_dump(merged, f, sort_keys=False, default_flow_style=False)
+
 
 def build_hermes_env() -> dict[str, str]:
     """Merge OS env + HERMES_HOME + .env file contents for a hermes subprocess.
@@ -778,6 +931,40 @@ def build_hermes_env() -> dict[str, str]:
     """
     env = {**os.environ, "HERMES_HOME": HERMES_HOME}
     env.update(read_env(ENV_FILE))
+    return env
+
+
+def build_pr_env() -> dict[str, str]:
+    """Build the subprocess env for the locked-down `pr` profile's gateway.
+
+    Deliberately NOT build_hermes_env() + overrides: that function merges the
+    operator's ENTIRE $HERMES_HOME/.env, which holds HEDERA_OPERATOR_KEY,
+    EVM_OPERATOR_PRIVATE_KEY, WORLD_RP_SIGNING_KEY, GRAPH_DEPLOY_KEY, etc. Since
+    MCP stdio subprocesses commonly inherit their parent's env, blindly reusing
+    that merge here would leak those secrets into the pr gateway's own process
+    env even though no *_write MCP is ever registered for it — bad hygiene at
+    best, a real exposure if a future edit ever mis-registers one.
+
+    Instead: start from a hard allowlist (PR_SAFE_ENV_KEYS — LLM model/provider
+    credentials only, the one thing worth sharing with the operator profile so
+    the pr agent uses the same configured model) pulled from BOTH the
+    operator's .env and os.environ (a provider key may live in either
+    depending on whether it was set via the setup wizard or a Railway var),
+    then layer on this profile's own identity/api_server settings.
+    """
+    operator_env = read_env(ENV_FILE)
+    env: dict[str, str] = {}
+    for key in PR_SAFE_ENV_KEYS:
+        value = operator_env.get(key) or os.environ.get(key, "")
+        if value:
+            env[key] = value
+
+    env["HERMES_HOME"] = HERMES_HOME
+    env["API_SERVER_ENABLED"] = "true"
+    env["API_SERVER_HOST"] = PR_API_SERVER_HOST
+    env["API_SERVER_PORT"] = str(PR_API_SERVER_PORT)
+    env["API_SERVER_KEY"] = PR_API_SERVER_KEY
+    env["API_SERVER_MODEL_NAME"] = "hermes-pr"
     return env
 
 
@@ -1319,7 +1506,33 @@ RESPAWN_MAX_DELAY  = 30.0    # backoff cap
 
 
 class Gateway:
-    def __init__(self):
+    """Supervises one `hermes gateway run` subprocess.
+
+    Parametrized (rather than hardcoded to the operator/default profile) so the
+    same class also supervises the locked-down `pr` profile's gateway — see
+    `gw_pr` below. Everything profile-specific (the `-p <name>` CLI flag, the
+    session cwd for AGENTS.md discovery, the subprocess env, the config.yaml
+    writer, and where that profile's gateway.pid lock lives) is passed in;
+    behavior for the default `gw = Gateway()` instance is unchanged.
+    """
+
+    def __init__(
+        self,
+        *,
+        profile: str | None = None,
+        cwd: str = AGENT_WORKDIR,
+        env_builder: Callable[[], dict[str, str]] = build_hermes_env,
+        config_writer: Callable[[], None] | None = None,
+        pid_home: str = HERMES_HOME,
+        log_prefix: str = "gateway",
+    ):
+        self.profile = profile
+        self.cwd = cwd
+        self.env_builder = env_builder
+        self.config_writer = config_writer or (lambda: write_config_yaml(read_env(ENV_FILE)))
+        self.pid_home = pid_home
+        self.log_prefix = log_prefix
+
         self.proc: asyncio.subprocess.Process | None = None
         self.state = "stopped"
         self.logs: deque[str] = deque(maxlen=500)
@@ -1343,12 +1556,12 @@ class Gateway:
         self.state = "starting"
         self._stopping = False
         try:
-            env = build_hermes_env()
+            env = self.env_builder()
             model = env.get("LLM_MODEL", "")
             provider_key = next((env.get(k, "") for k in PROVIDER_KEYS if env.get(k)), "")
-            print(f"[gateway] model={model or '⚠ NOT SET'} | provider_key={'set' if provider_key else '⚠ NOT SET'}", flush=True)
+            print(f"[{self.log_prefix}] model={model or '⚠ NOT SET'} | provider_key={'set' if provider_key else '⚠ NOT SET'}", flush=True)
             # Write config.yaml so hermes picks up the model (env vars alone aren't always enough)
-            write_config_yaml(read_env(ENV_FILE))
+            self.config_writer()
             # --replace: force-displace any existing gateway.pid lock holder
             # before claiming it. Without this, a lock left behind by a prior
             # incarnation this supervisor doesn't recognize as "our" dead
@@ -1362,11 +1575,14 @@ class Gateway:
             # die. --replace is hermes' own blessed fix for exactly this
             # class of stuck-lock — it force-kills whatever holds the lock
             # (graceful SIGTERM, escalating to SIGKILL) before claiming it.
+            args = ["gateway", "run", "--replace"]
+            if self.profile:
+                args = ["-p", self.profile, *args]
             self.proc = await asyncio.create_subprocess_exec(
-                "hermes", "gateway", "run", "--replace",
+                "hermes", *args,
                 # cwd is the session working dir the TUI/CLI uses for AGENTS.md
-                # discovery (it ignores terminal.cwd) — see AGENT_WORKDIR.
-                cwd=AGENT_WORKDIR,
+                # discovery (it ignores terminal.cwd) — see AGENT_WORKDIR/PR_WORKDIR.
+                cwd=self.cwd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 env=env,
@@ -1413,7 +1629,7 @@ class Gateway:
         # Unexpected exit: in-band `/restart` (exit 75), a crash, or an OOM kill.
         # On Railway nothing else brings the gateway back, so we supervise it.
         self.state = "error"
-        self.logs.append(f"[gateway] exited (code {rc}) — supervising restart")
+        self.logs.append(f"[{self.log_prefix}] exited (code {rc}) — supervising restart")
         asyncio.create_task(self._supervise_respawn(proc.pid))
 
     async def _supervise_respawn(self, dead_pid: int | None):
@@ -1425,24 +1641,24 @@ class Gateway:
         if len(self._recent_exits) > RESPAWN_MAX_IN_WIN:
             self.state = "crashed"
             self.logs.append(
-                f"[gateway] crash-looping ({len(self._recent_exits)} exits in "
+                f"[{self.log_prefix}] crash-looping ({len(self._recent_exits)} exits in "
                 f"{RESPAWN_WINDOW_S}s) — giving up auto-restart. Fix the provider/"
                 f"model in the admin UI, then Start/Restart the gateway."
             )
             return
         delay = min(RESPAWN_BASE_DELAY * 2 ** (len(self._recent_exits) - 1), RESPAWN_MAX_DELAY)
-        self.logs.append(f"[gateway] restarting in {int(delay)}s (attempt {len(self._recent_exits)})")
+        self.logs.append(f"[{self.log_prefix}] restarting in {int(delay)}s (attempt {len(self._recent_exits)})")
         await asyncio.sleep(delay)
         # Re-check the deliberate-lifecycle conditions AFTER the backoff sleep: a
         # Stop, Reset, or shutdown issued during the wait must win over the respawn.
         if self._stopping:
-            self.logs.append("[gateway] restart cancelled (stopped/reconfigured)")
+            self.logs.append(f"[{self.log_prefix}] restart cancelled (stopped/reconfigured)")
             return
         if self.proc and self.proc.returncode is None:
             return  # a manual Start already brought a live gateway back
         if not is_config_complete():
             self.state = "stopped"
-            self.logs.append("[gateway] restart skipped — provider/model not configured")
+            self.logs.append(f"[{self.log_prefix}] restart skipped — provider/model not configured")
             return
         # Clear a pid file left stale by a hard crash (SIGKILL/OOM skips hermes'
         # atexit cleanup) so the respawn's own O_EXCL pid claim can't bail with
@@ -1455,7 +1671,7 @@ class Gateway:
     def _clear_stale_pidfile(self, dead_pid: int | None) -> None:
         if dead_pid is None:
             return
-        pid_file = Path(HERMES_HOME) / "gateway.pid"
+        pid_file = Path(self.pid_home) / "gateway.pid"
         try:
             rec = json.loads(pid_file.read_text())
         except Exception:
@@ -1463,7 +1679,7 @@ class Gateway:
         if rec.get("pid") == dead_pid:
             try:
                 pid_file.unlink()
-                self.logs.append(f"[gateway] cleared stale pid file (pid {dead_pid})")
+                self.logs.append(f"[{self.log_prefix}] cleared stale pid file (pid {dead_pid})")
             except OSError:
                 pass
 
@@ -1478,6 +1694,48 @@ class Gateway:
 
 
 gw = Gateway()
+
+# The locked-down `pr` (public-relations) profile's gateway — same class, same
+# supervision/respawn/crash-loop behavior, but its own profile flag, session
+# cwd, env (build_pr_env — LLM provider key only, no operator/write secrets),
+# config writer (write_pr_config_yaml, registers only the *_read MCPs), and
+# pid-lock file (profiles have their own gateway.pid, not the root one gw uses
+# — see the Hermes profiles docs). Started/stopped alongside gw in
+# auto_start()/lifespan() below; the tokenization platform's chat route talks
+# to it over its api_server port (PR_API_SERVER_URL), never through gw.
+gw_pr = Gateway(
+    profile=PR_PROFILE,
+    cwd=PR_WORKDIR,
+    env_builder=build_pr_env,
+    config_writer=lambda: write_pr_config_yaml(_current_pr_model_block()),
+    pid_home=str(PR_HOME),
+    log_prefix="pr-gateway",
+)
+
+
+def _current_pr_model_block() -> dict[str, str]:
+    """Resolve the model block gw_pr's config_writer should use.
+
+    write_config_yaml() already calls write_pr_config_yaml() itself with the
+    just-resolved operator model block on every operator gateway start/restart
+    (keeping the two in sync the moment either changes). This is the fallback
+    for the independent path where gw_pr starts, restarts, or respawns on its
+    own (e.g. its own crash-loop recovery) without gw also having just run —
+    read whatever model.default/provider write_config_yaml last persisted for
+    the operator profile, rather than leaving gw_pr on a stale or empty model.
+    """
+    import yaml
+
+    config_path = Path(HERMES_HOME) / "config.yaml"
+    try:
+        with config_path.open() as f:
+            loaded = yaml.safe_load(f)
+    except (OSError, yaml.YAMLError):
+        loaded = None
+    model_block = loaded.get("model") if isinstance(loaded, dict) else None
+    return dict(model_block) if isinstance(model_block, dict) else {"default": ""}
+
+
 cfg_lock = asyncio.Lock()
 
 
@@ -1624,6 +1882,11 @@ class TokenizationApp:
             "HERMES_TOKEN_REQUEST_WEBHOOK_SECRET": TOKEN_REQUEST_WEBHOOK_SECRET,
             "HERMES_LIVENESS_WEBHOOK_URL": LIVENESS_VERIFICATION_WEBHOOK_URL,
             "HERMES_LIVENESS_WEBHOOK_SECRET": TOKEN_REQUEST_WEBHOOK_SECRET,
+            # Read-only "pr" Hermes profile's OpenAI-compatible API server —
+            # the holder-facing token chat route proxies to this, never to the
+            # operator gateway. Loopback-only; see PR_* constants above.
+            "HERMES_PR_API_SERVER_URL": PR_API_SERVER_URL,
+            "HERMES_PR_API_SERVER_KEY": PR_API_SERVER_KEY,
         })
         env.setdefault("DATABASE_PATH", "/data/tokenization/tokenization.db")
 
@@ -1814,7 +2077,7 @@ async def page_index(request: Request):
 
 
 async def route_health(request: Request):
-    return JSONResponse({"status": "ok", "gateway": gw.state})
+    return JSONResponse({"status": "ok", "gateway": gw.state, "pr_gateway": gw_pr.state})
 
 
 async def api_config_get(request: Request):
@@ -1896,12 +2159,17 @@ async def api_status(request: Request):
         name: {"configured": bool(v := data.get(key,"")) and v.lower() not in ("false","0","no")}
         for name, key in CHANNEL_MAP.items()
     }
-    return JSONResponse({"gateway": gw.status(), "providers": providers, "channels": channels})
+    return JSONResponse({
+        "gateway": gw.status(),
+        "pr_gateway": gw_pr.status(),
+        "providers": providers,
+        "channels": channels,
+    })
 
 
 async def api_logs(request: Request):
     if err := guard(request): return err
-    return JSONResponse({"lines": list(gw.logs)})
+    return JSONResponse({"lines": list(gw.logs), "pr_lines": list(gw_pr.logs)})
 
 
 async def api_gw_start(request: Request):
@@ -2474,6 +2742,10 @@ async def route_setup_404(request: Request) -> Response:
 async def auto_start():
     if is_config_complete():
         asyncio.create_task(gw.start())
+        # The pr profile shares the operator's provider/model, so the same
+        # readiness check applies — no point starting a read-only chat agent
+        # that can't reach any LLM either.
+        asyncio.create_task(gw_pr.start())
     else:
         print("[server] Config incomplete — gateway not started. Configure provider + model in the admin UI.", flush=True)
 
@@ -2533,6 +2805,7 @@ async def lifespan(app):
             pass
         await asyncio.gather(
             gw.stop(),
+            gw_pr.stop(),
             dash.stop(),
             tokenization.stop(),
             return_exceptions=True,

@@ -101,10 +101,13 @@ RUN printf 'docker\n' > /opt/hermes-agent/.install_method
 COPY apps/agent/requirements.txt /app/requirements.txt
 RUN uv pip install --system --no-cache -r /app/requirements.txt
 
-# ── Subgraph MCP (TypeScript) — the "subgraph" MCP server registered in
-# server.py:write_config_yaml. Shipped and run AS-IS (no Python port): Hermes
-# launches it as a stdio subprocess via tsx (see the mcp_servers.subgraph
-# command there). Two checkouts are baked in:
+# ── Subgraph MCP (TypeScript) — split into subgraph_read (src/read.ts, pure
+# GraphQL/RPC queries, never imports node:child_process) and subgraph_write
+# (src/write.ts, edits subgraph.yaml and shells out to graph-cli; needs
+# GRAPH_DEPLOY_KEY) — both registered in server.py:write_config_yaml. Shipped
+# and run AS-IS (no Python port): Hermes launches each as a stdio subprocess
+# via tsx (see the mcp_servers.subgraph_read/subgraph_write commands there).
+# Two checkouts are baked in:
 #   /opt/subgraph-mcp — the MCP server itself (needs tsx + its runtime deps).
 #   /opt/subgraph     — the subgraph project the deploy tools shell out to; its
 #                       node_modules carries @graphprotocol/graph-cli, which
@@ -127,8 +130,16 @@ COPY apps/agent/mcps/subgraph/subgraph/ /opt/subgraph/
 RUN mkdir -p /data/.hermes /data/tokenization
 
 COPY apps/agent/server.py /app/server.py
-COPY apps/agent/mcps/hedera/server.py /app/hedera_mcp.py
-COPY apps/agent/mcps/evm/server.py /app/evm_mcp.py
+# hedera and evm are each split into a read-only and a write (state-mutating)
+# MCP server sharing a common.py — see mcps/{hedera,evm}/{common,read_server,
+# write_server}.py. Copy each whole directory (not single files) so the
+# non-relative `from common import ...` in read_server.py/write_server.py
+# resolves: running `python /app/mcps/hedera/read_server.py` auto-adds that
+# script's own directory to sys.path, so common.py just needs to sit next to
+# it — see server.py:write_config_yaml for how each is registered under its
+# own mcp_servers key (hedera_read/hedera_write, evm_read/evm_write).
+COPY apps/agent/mcps/hedera/ /app/mcps/hedera/
+COPY apps/agent/mcps/evm/ /app/mcps/evm/
 COPY apps/agent/mcps/worldid/server.py /app/worldid_mcp.py
 COPY apps/agent/templates/ /app/templates/
 COPY apps/agent/start.sh /app/start.sh
@@ -137,6 +148,10 @@ COPY apps/agent/start.sh /app/start.sh
 # config.yaml below, so this survives redeploys with a fresh/reused volume
 # without ever overwriting an operator's or the agent's own runtime edits.
 COPY apps/agent/agent-identity/ /opt/hermes-agent-identity/
+# Identity for the separate, locked-down `pr` (public-relations) profile — see
+# server.py's PR_* constants / write_pr_config_yaml and start.sh's seeding of
+# this into $HERMES_HOME/profiles/pr/workspace/AGENTS.md.
+COPY apps/agent/agent-identity-pr/ /opt/hermes-agent-identity-pr/
 COPY --from=platform-builder /build/platform/.next/standalone/ /app/tokenization/
 RUN chmod +x /app/start.sh
 

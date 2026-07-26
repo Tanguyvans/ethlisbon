@@ -2,6 +2,7 @@
 
 import { Badge, Card } from "@/components/ui";
 import HolderPanel from "@/components/HolderPanel";
+import TokenChat from "@/components/TokenChat";
 import EventLog from "@/components/EventLog";
 import type {
   EventRecord,
@@ -33,6 +34,7 @@ export default function TokenWorkspace({
         requests={requests}
         worldConfig={worldConfig}
       />
+      <TokenChat token={token} holders={holders} />
       <EventLog events={events} />
     </div>
   );
