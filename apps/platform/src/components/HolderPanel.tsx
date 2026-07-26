@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@/hooks/useWalletConnect";
+import { useEvmWallet } from "@/hooks/useEvmWallet";
 import { postJson } from "@/lib/apiClient";
 import { Badge, Button, Card, ErrorText, TextInput } from "@/components/ui";
 import HolderWorldIdCheck from "@/components/HolderWorldIdCheck";
@@ -28,16 +29,22 @@ export default function HolderPanel({
   requests: TokenRequestRecord[];
   worldConfig: WorldIdClientConfig;
 }) {
-  const { accountId, connect, connecting } = useWallet();
+  const hederaWallet = useWallet();
+  const evmWallet = useEvmWallet();
+  const activeWallet = token.blockchain === "EVM" ? evmWallet : hederaWallet;
+  const { accountId, connect, connecting } = activeWallet;
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [allowanceAmount, setAllowanceAmount] = useState(token.maxSupply ? Number(token.maxSupply) : 1_000_000_000);
 
-  const holder = useMemo(() => holders.find((h) => h.accountId === accountId) ?? null, [holders, accountId]);
+  const holder = useMemo(
+    () => holders.find((h) => h.accountId.toLowerCase() === accountId?.toLowerCase()) ?? null,
+    [holders, accountId],
+  );
   const tokenRequest = useMemo(
-    () => requests.find((request) => request.accountId === accountId) ?? null,
+    () => requests.find((request) => request.accountId.toLowerCase() === accountId?.toLowerCase()) ?? null,
     [requests, accountId]
   );
   const worldIdReadyForHermes = hasRequiredWorldIdSubmission(token, holder);
@@ -78,7 +85,9 @@ export default function HolderPanel({
     return (
       <Card className="flex flex-col gap-3">
         <h2 className="font-semibold">Join as a holder</h2>
-        <p className="text-sm text-zinc-500">Connect a Hedera wallet to associate this token, pass compliance checks, and receive a balance.</p>
+        <p className="text-sm text-zinc-500">
+          Connect a {token.blockchain === "EVM" ? "Sepolia" : "Hedera"} wallet to pass compliance checks and receive a balance.
+        </p>
         <Button onClick={connect} disabled={connecting} className="self-start">
           {connecting ? "Connecting…" : "Connect wallet"}
         </Button>
@@ -108,13 +117,21 @@ export default function HolderPanel({
 
       {holder && (
         <div className="flex flex-col gap-3">
-          <ChecklistRow
-            label="Associate token to your account"
-            done={holder.associated}
-            action={
-              <AssociateButton tokenId={token.id} accountId={accountId} onDone={() => router.refresh()} onError={setError} />
-            }
-          />
+          {token.blockchain === "EVM" ? (
+            <ChecklistRow
+              label="Wallet ready on Sepolia"
+              done={holder.associated}
+              action={<Badge tone="emerald">ERC-20</Badge>}
+            />
+          ) : (
+            <ChecklistRow
+              label="Associate token to your account"
+              done={holder.associated}
+              action={
+                <AssociateButton tokenId={token.id} accountId={accountId} onDone={() => router.refresh()} onError={setError} />
+              }
+            />
+          )}
           {token.compliance.worldIdSelfieCheck && (
             <ChecklistRow
               label={token.compliance.livenessEnabled ? "Keep World ID Selfie Check current" : "Complete World ID Selfie Check"}
@@ -192,7 +209,7 @@ export default function HolderPanel({
                       onChange={(e) => setAllowanceAmount(Number(e.target.value))}
                     />
                     <AllowanceButton
-                      tokenId={token.id}
+                      token={token}
                       accountId={accountId}
                       treasuryAccountId={token.treasuryAccountId}
                       amount={allowanceAmount}
@@ -458,14 +475,14 @@ function AssociateButton({
 }
 
 function AllowanceButton({
-  tokenId,
+  token,
   accountId,
   treasuryAccountId,
   amount,
   onDone,
   onError,
 }: {
-  tokenId: string;
+  token: TokenRecord;
   accountId: string;
   treasuryAccountId: string;
   amount: number;
@@ -473,6 +490,7 @@ function AllowanceButton({
   onError: (msg: string) => void;
 }) {
   const { approveAllowance } = useWallet();
+  const evmWallet = useEvmWallet();
   const [busy, setBusy] = useState(false);
   return (
     <Button
@@ -482,8 +500,10 @@ function AllowanceButton({
         setBusy(true);
         onError("");
         try {
-          const txId = await approveAllowance(tokenId, treasuryAccountId, amount);
-          await postJson(`/api/tokens/${tokenId}/holders/${accountId}/allowance`, { txId, amount });
+          const txId = token.blockchain === "EVM"
+            ? await evmWallet.approveAllowance(token.id, treasuryAccountId, amount)
+            : await approveAllowance(token.id, treasuryAccountId, amount);
+          await postJson(`/api/tokens/${token.id}/holders/${accountId}/allowance`, { txId, amount });
           onDone();
         } catch (err) {
           onError(err instanceof Error ? err.message : "Allowance approval failed");

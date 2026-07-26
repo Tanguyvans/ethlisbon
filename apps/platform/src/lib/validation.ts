@@ -102,6 +102,7 @@ export const complianceSchema = z
 
 export const createTokenSchema = z
   .object({
+    blockchain: z.enum(["HEDERA", "EVM"]).default("HEDERA"),
     name: z.string().trim().min(1).max(100),
     symbol: z.string().trim().min(1).max(20),
     tokenType: z.enum(["FUNGIBLE", "NFT"]),
@@ -124,18 +125,39 @@ export const createTokenSchema = z
   })
   .refine((v) => v.tokenType === "NFT" || v.initialSupply >= 0, { message: "invalid initialSupply" });
 
+export const createEvmTokenSchema = createTokenSchema
+  .refine((v) => v.blockchain === "EVM", {
+    message: "blockchain must be EVM for the Sepolia deployment endpoint",
+    path: ["blockchain"],
+  })
+  .refine((v) => v.tokenType === "FUNGIBLE", {
+    message: "Sepolia V1 supports fungible ERC-20 tokens only",
+    path: ["tokenType"],
+  })
+  .refine((v) => !v.customFee, {
+    message: "HTS custom fees are not available on the Sepolia ERC-20 adapter",
+    path: ["customFee"],
+  });
+
 export const accountIdSchema = z
   .string()
   .trim()
   .regex(/^\d+\.\d+\.\d+$/, "must be a Hedera account id like 0.0.1234");
 
+export const evmAddressSchema = z
+  .string()
+  .trim()
+  .regex(/^0x[a-fA-F0-9]{40}$/, "must be a 20-byte EVM address");
+
+export const walletIdentifierSchema = z.union([accountIdSchema, evmAddressSchema]);
+
 export const registerHolderSchema = z.object({
-  accountId: accountIdSchema,
+  accountId: walletIdentifierSchema,
   evmAddress: z.string().trim().optional(),
 });
 
 export const createTokenRequestSchema = z.object({
-  accountId: accountIdSchema,
+  accountId: walletIdentifierSchema,
 });
 
 export const tokenRequestStatusSchema = z.enum(["PENDING", "PROCESSING", "FULFILLED", "REJECTED"]);
@@ -153,8 +175,8 @@ export const allowanceReceiptSchema = txReceiptSchema.extend({
 });
 
 export const transferSchema = z.object({
-  accountId: accountIdSchema,
-  amount: z.number().positive(),
+  accountId: walletIdentifierSchema,
+  amount: z.number().int().positive(),
 });
 
 export const pauseSchema = z.object({

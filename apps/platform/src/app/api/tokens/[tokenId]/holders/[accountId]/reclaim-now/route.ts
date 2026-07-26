@@ -3,6 +3,7 @@ import { ApiError, handleRoute, requireToken } from "@/lib/api/helpers";
 import { getHolder, insertEvent, updateHolder } from "@/lib/db/repo";
 import { reclaimViaAllowanceNow, wipeAllFungible } from "@/lib/hedera/tokenService";
 import { cancelScheduledReclaim } from "@/lib/hedera/scheduleService";
+import { reclaimEvmViaAllowance, recoverEvmBalance } from "@/lib/evm/client";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,9 @@ export async function POST(
 
     let result;
     if (token.keys.wipe) {
-      result = await wipeAllFungible(tokenId, accountId);
+      result = token.blockchain === "EVM"
+        ? await recoverEvmBalance(tokenId, accountId)
+        : await wipeAllFungible(tokenId, accountId);
       insertEvent({
         tokenId,
         accountId,
@@ -31,7 +34,9 @@ export async function POST(
         hashscanUrl: result.hashscanUrl,
       });
     } else if (holder.allowanceGranted) {
-      result = await reclaimViaAllowanceNow(tokenId, accountId);
+      result = token.blockchain === "EVM"
+        ? await reclaimEvmViaAllowance(tokenId, accountId)
+        : await reclaimViaAllowanceNow(tokenId, accountId);
       insertEvent({
         tokenId,
         accountId,
@@ -47,7 +52,7 @@ export async function POST(
       );
     }
 
-    if (holder.activeScheduleId) {
+    if (token.blockchain === "HEDERA" && holder.activeScheduleId) {
       await cancelScheduledReclaim(holder.activeScheduleId);
     }
     updateHolder(tokenId, accountId, {

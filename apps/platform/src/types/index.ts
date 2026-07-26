@@ -3,6 +3,8 @@
 
 export type TokenType = "FUNGIBLE" | "NFT";
 export type SupplyType = "FINITE" | "INFINITE";
+export type Blockchain = "HEDERA" | "EVM";
+export type TokenNetwork = "mainnet" | "testnet" | "previewnet" | "sepolia";
 export type AssetCategory =
   | "securities"
   | "real-estate"
@@ -51,6 +53,7 @@ export interface ComplianceOptions {
 }
 
 export interface CreateTokenInput {
+  blockchain?: Blockchain;
   name: string;
   symbol: string;
   tokenType: TokenType;
@@ -66,6 +69,8 @@ export interface CreateTokenInput {
 
 export interface TokenRecord {
   id: string;
+  blockchain: Blockchain;
+  network: TokenNetwork;
   name: string;
   symbol: string;
   tokenType: TokenType;
@@ -90,6 +95,8 @@ export interface TokenRecord {
   paused: boolean;
   createTxId: string | null;
   hashscanUrl: string;
+  explorerUrl: string;
+  explorerName: "HashScan" | "Etherscan";
   createdAt: string;
 }
 

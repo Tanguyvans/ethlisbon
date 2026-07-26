@@ -67,8 +67,11 @@ function TokenHeader({ token }: { token: TokenRecord }) {
             <span>{token.tokenType}</span>
             <span>·</span>
             <span>treasury {token.treasuryAccountId}</span>
-            <a href={token.hashscanUrl} target="_blank" rel="noreferrer" className="hover:underline">
-              HashScan ↗
+            <Badge tone={token.blockchain === "EVM" ? "violet" : "emerald"}>
+              {token.blockchain === "EVM" ? "Ethereum Sepolia" : "Hedera testnet"}
+            </Badge>
+            <a href={token.explorerUrl} target="_blank" rel="noreferrer" className="hover:underline">
+              {token.explorerName} ↗
             </a>
           </div>
         </div>

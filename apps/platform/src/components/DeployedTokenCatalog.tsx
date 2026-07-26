@@ -3,29 +3,24 @@ import type { TokenRecord } from "@/types";
 
 const ACCENTS = [
   {
-    chip: "border-cyan-200 bg-cyan-50 text-cyan-800",
-    glow: "from-cyan-300/40 via-sky-100/20 to-transparent",
-    mark: "bg-cyan-600",
+    chip: "is-sage",
+    mark: "is-sage",
   },
   {
-    chip: "border-amber-200 bg-amber-50 text-amber-800",
-    glow: "from-amber-300/40 via-orange-100/20 to-transparent",
-    mark: "bg-amber-500",
+    chip: "is-bronze",
+    mark: "is-bronze",
   },
   {
-    chip: "border-rose-200 bg-rose-50 text-rose-800",
-    glow: "from-rose-300/35 via-orange-100/20 to-transparent",
-    mark: "bg-rose-500",
+    chip: "is-slate",
+    mark: "is-slate",
   },
   {
-    chip: "border-slate-300 bg-slate-100 text-slate-800",
-    glow: "from-slate-400/35 via-slate-100/20 to-transparent",
-    mark: "bg-slate-800",
+    chip: "is-ink",
+    mark: "is-ink",
   },
   {
-    chip: "border-violet-200 bg-violet-50 text-violet-800",
-    glow: "from-violet-300/40 via-fuchsia-100/20 to-transparent",
-    mark: "bg-violet-600",
+    chip: "is-violet",
+    mark: "is-violet",
   },
 ] as const;
 
@@ -80,23 +75,30 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
   return (
     <>
       <section className="rwa-hero">
-        <div className="max-w-3xl">
-          <p className="rwa-eyebrow">Hedera RWA access desk</p>
+        <div className="rwa-hero-copy">
+          <p className="rwa-eyebrow">
+            <span aria-hidden="true" />
+            Tokenized asset registry
+          </p>
           <h1>
-            Explore real assets.
+            Real assets,
             <br />
-            <span>Manage them on-chain.</span>
+            <span>clear oversight.</span>
           </h1>
           <p className="rwa-lede">
-            Browse the tokens deployed by this agent. Open a token to connect a
-            wallet, prove eligibility, and manage its holders.
+            Review every instrument deployed by this agent, verify access
+            conditions and manage holders from one secure workspace.
           </p>
         </div>
-        <div className="rwa-proof-key" aria-label="Deployment status">
+        <div className="rwa-proof-key" aria-label="Registry status">
+          <div className="rwa-proof-heading">
+            <p>Registry status</p>
+            <span>Operational</span>
+          </div>
           <div>
             <span className="proof-live-dot" aria-hidden="true" />
             <p>Network</p>
-            <strong>Hedera testnet</strong>
+            <strong>Hedera + Sepolia</strong>
           </div>
           <div>
             <span className="proof-sim-dot" aria-hidden="true" />
@@ -106,14 +108,14 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
         </div>
       </section>
 
-      <div className="rwa-catalog-head">
+      <div className="rwa-catalog-head" id="instruments">
         <div>
-          <p className="rwa-kicker">Live catalog</p>
-          <h2>Available instruments</h2>
+          <p className="rwa-kicker">Asset registry</p>
+          <h2>Deployed instruments</h2>
         </div>
         <span className="rwa-no-payment">
-          <span className="proof-live-dot h-1.5 w-1.5" aria-hidden="true" />
-          Synced with the deployment
+          <span className="proof-live-dot" aria-hidden="true" />
+          Deployment synced
         </span>
       </div>
 
@@ -140,14 +142,10 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
                 className="rwa-card group block"
                 aria-label={`Open ${token.name} (${token.id})`}
               >
-                <div
-                  className={`pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-br ${accent.glow}`}
-                  aria-hidden="true"
-                />
                 <div className="relative flex h-full flex-col">
                   <div className="flex items-start justify-between gap-4">
                     <div className={`rwa-symbol ${accent.mark}`}>{token.symbol}</div>
-                    <span className="font-mono text-[10px] tracking-[0.14em] text-zinc-400">
+                    <span className="rwa-token-id">
                       {token.id}
                     </span>
                   </div>
@@ -156,14 +154,14 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
                     <span className={`rwa-asset-chip ${accent.chip}`}>{assetType}</span>
                     <h3>{token.name}</h3>
                     <p className="rwa-description">
-                      {token.memo || "A real-world asset token deployed on Hedera Token Service."}
+                      {token.memo || `A real-world asset token deployed on ${token.blockchain === "EVM" ? "Ethereum Sepolia" : "Hedera Token Service"}.`}
                     </p>
                   </div>
 
                   <dl className="rwa-meta">
                     <div>
-                      <dt>Token type</dt>
-                      <dd>{token.tokenType === "NFT" ? "NFT" : "Fungible"}</dd>
+                      <dt>Network</dt>
+                      <dd>{token.blockchain === "EVM" ? "Sepolia" : "Hedera"}</dd>
                     </div>
                     <div>
                       <dt>Initial supply</dt>
@@ -174,7 +172,7 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
                   <div className="rwa-requirements">
                     <div className="flex items-center justify-between gap-3">
                       <span>Compliance controls</span>
-                      <span className={controls.length ? "text-violet-700" : "text-emerald-700"}>
+                      <span className={controls.length ? "rwa-control-count" : "rwa-control-open"}>
                         {controls.length || "Open"}
                       </span>
                     </div>
@@ -191,8 +189,8 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
                     </div>
                   </div>
 
-                  <span className="rwa-card-action group-hover:bg-violet-700">
-                    <span>Open token</span>
+                  <span className="rwa-card-action">
+                    <span>View instrument</span>
                     <ArrowIcon />
                   </span>
                 </div>

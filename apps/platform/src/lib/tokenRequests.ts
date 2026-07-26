@@ -17,6 +17,11 @@ import {
 import type { HolderRecord, TokenRecord, TokenRequestRecord } from "@/types";
 import { hasRequiredWorldIdVerification } from "@/lib/worldid/policy";
 import { armLivenessReclaim } from "@/lib/liveness";
+import {
+  getEvmTokenBalance,
+  mintEvmToken,
+  transferEvmFromTreasury,
+} from "@/lib/evm/client";
 
 export function oneDisplayTokenInBaseUnits(decimals: number): string {
   return (BigInt(10) ** BigInt(decimals)).toString();
@@ -74,7 +79,9 @@ export async function fulfillStoredTokenRequest(requestId: number): Promise<Toke
   const requestedAmount = BigInt(claimed.amountBaseUnits);
   let treasuryBalance: bigint;
   try {
-    treasuryBalance = await getTokenBalanceBaseUnits(claimed.tokenId, token.treasuryAccountId);
+    treasuryBalance = token.blockchain === "EVM"
+      ? await getEvmTokenBalance(claimed.tokenId, token.treasuryAccountId)
+      : await getTokenBalanceBaseUnits(claimed.tokenId, token.treasuryAccountId);
   } catch (error) {
     // Balance queries are read-only, so a failed query is always safe to retry.
     const message = error instanceof Error ? error.message : "Unknown Hedera balance query error";
@@ -92,7 +99,9 @@ export async function fulfillStoredTokenRequest(requestId: number): Promise<Toke
     const mintAmount = requestedAmount - treasuryBalance;
     let mintResult;
     try {
-      mintResult = await mintFungible(claimed.tokenId, mintAmount);
+      mintResult = token.blockchain === "EVM"
+        ? await mintEvmToken(claimed.tokenId, mintAmount)
+        : await mintFungible(claimed.tokenId, mintAmount);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown Hedera mint error";
       if (error instanceof ReceiptStatusError) {
@@ -121,11 +130,9 @@ export async function fulfillStoredTokenRequest(requestId: number): Promise<Toke
 
   let result;
   try {
-    result = await transferFromTreasury(
-      claimed.tokenId,
-      claimed.accountId,
-      requestedAmount
-    );
+    result = token.blockchain === "EVM"
+      ? await transferEvmFromTreasury(claimed.tokenId, claimed.accountId, requestedAmount)
+      : await transferFromTreasury(claimed.tokenId, claimed.accountId, requestedAmount);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown Hedera transfer error";
     if (error instanceof ReceiptStatusError) {

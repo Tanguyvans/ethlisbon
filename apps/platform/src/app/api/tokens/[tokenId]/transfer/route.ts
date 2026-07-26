@@ -3,6 +3,7 @@ import { ApiError, handleRoute, readJson, requireToken } from "@/lib/api/helpers
 import { getHolder, insertEvent } from "@/lib/db/repo";
 import { transferFromTreasury } from "@/lib/hedera/tokenService";
 import { transferSchema } from "@/lib/validation";
+import { transferEvmFromTreasury } from "@/lib/evm/client";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request, { params }: { params: Promise<{ tokenId: string }> }) {
   return handleRoute(async () => {
     const { tokenId } = await params;
-    requireToken(tokenId);
+    const token = requireToken(tokenId);
 
     const { accountId, amount } = transferSchema.parse(await readJson<unknown>(req));
     const holder = getHolder(tokenId, accountId);
@@ -23,7 +24,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ tokenId
       );
     }
 
-    const result = await transferFromTreasury(tokenId, accountId, amount);
+    const result = token.blockchain === "EVM"
+      ? await transferEvmFromTreasury(tokenId, accountId, amount)
+      : await transferFromTreasury(tokenId, accountId, amount);
     insertEvent({
       tokenId,
       accountId,

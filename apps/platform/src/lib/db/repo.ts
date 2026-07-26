@@ -17,13 +17,17 @@ import type {
   WorldIdCheckKind,
   WorldIdVerificationRecord,
   WorldIdVerificationStatus,
+  Blockchain,
+  TokenNetwork,
 } from "@/types";
-import { hashscanTokenUrl } from "@/lib/hedera/format";
+import { tokenExplorerUrl } from "@/lib/chains";
 
 // --- raw row shapes (sqlite gives us 0/1 for booleans and TEXT for everything else) ---
 
 interface TokenRow {
   id: string;
+  blockchain: string;
+  network: string;
   name: string;
   symbol: string;
   token_type: string;
@@ -147,8 +151,13 @@ function mapToken(row: TokenRow): TokenRecord {
     livenessEnabled: !!row.liveness_enabled,
     livenessPeriodSeconds: row.liveness_period_seconds ?? undefined,
   };
+  const blockchain = row.blockchain as Blockchain;
+  const network = row.network as TokenNetwork;
+  const explorerUrl = tokenExplorerUrl(blockchain, network, row.id);
   return {
     id: row.id,
+    blockchain,
+    network,
     name: row.name,
     symbol: row.symbol,
     tokenType: row.token_type as TokenType,
@@ -174,7 +183,10 @@ function mapToken(row: TokenRow): TokenRecord {
     },
     paused: !!row.paused,
     createTxId: row.create_tx_id,
-    hashscanUrl: hashscanTokenUrl(row.id),
+    // Keep this alias while older UI/MCP clients migrate to explorerUrl.
+    hashscanUrl: explorerUrl,
+    explorerUrl,
+    explorerName: blockchain === "EVM" ? "Etherscan" : "HashScan",
     createdAt: row.created_at,
   };
 }
@@ -282,6 +294,8 @@ function mapWorldIdVerification(row: WorldIdVerificationRow): WorldIdVerificatio
 
 export interface InsertTokenParams {
   id: string;
+  blockchain?: Blockchain;
+  network?: TokenNetwork;
   name: string;
   symbol: string;
   tokenType: TokenType;
@@ -302,7 +316,7 @@ export function insertToken(params: InsertTokenParams): TokenRecord {
   const db = getDb();
   db.prepare(
     `INSERT INTO tokens (
-      id, name, symbol, token_type, decimals, initial_supply, supply_type, max_supply,
+      id, blockchain, network, name, symbol, token_type, decimals, initial_supply, supply_type, max_supply,
       treasury_account_id, asset_category, memo,
       kyc_required, freeze_default, wipe_enabled, pause_enabled, world_id_required,
       world_id_selfie_check, world_id_minimum_age, world_id_nationality,
@@ -311,7 +325,7 @@ export function insertToken(params: InsertTokenParams): TokenRecord {
       has_admin_key, has_kyc_key, has_freeze_key, has_wipe_key, has_pause_key, has_supply_key, has_fee_schedule_key,
       create_tx_id
     ) VALUES (
-      @id, @name, @symbol, @tokenType, @decimals, @initialSupply, @supplyType, @maxSupply,
+      @id, @blockchain, @network, @name, @symbol, @tokenType, @decimals, @initialSupply, @supplyType, @maxSupply,
       @treasuryAccountId, @assetCategory, @memo,
       @kycRequired, @freezeDefault, @wipeEnabled, @pauseEnabled, @worldIdRequired,
       @worldIdSelfieCheck, @worldIdMinimumAge, @worldIdNationality,
@@ -322,6 +336,8 @@ export function insertToken(params: InsertTokenParams): TokenRecord {
     )`
   ).run({
     id: params.id,
+    blockchain: params.blockchain ?? "HEDERA",
+    network: params.network ?? "testnet",
     name: params.name,
     symbol: params.symbol,
     tokenType: params.tokenType,
