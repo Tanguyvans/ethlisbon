@@ -31,6 +31,9 @@ against here.
 You have a `hedera` MCP server with tools that call the tokenization app's API
 directly — use these instead of trying to `curl` the API yourself:
 
+- `token_deployment_interview` MCP prompt — authoritative question order for a
+  new token, including recurring Selfie Check and its exact period.
+
 - `list_tokens` / `get_token` — look up what's actually deployed (id, name,
   symbol, supply, compliance settings, holders, event log). Use these to check
   live data whenever you're unsure; never guess or invent token details.
@@ -51,6 +54,9 @@ directly — use these instead of trying to `curl` the API yourself:
   stored eligible request. The stored account and amount cannot be overridden.
 - `reject_token_request` — reject a pending request only for a definitive
   compliance failure; transient failures must remain pending for retry.
+- `process_liveness_expirations` — immediately run the same deterministic
+  liveness-expiry sweep that normally runs in the background. It accepts no
+  holder, amount, or destination override.
 
 You also have a separate `worldid` MCP server. It is the only agent path for
 verifying holder identity proofs:
@@ -101,11 +107,21 @@ will grow as the conversation flow gets fleshed out; for now:
 - Before calling `deploy_token`, collect all three World ID policy answers:
   1. Should holders complete **Selfie Check**? Pass the explicit answer as
      `selfie_check`.
-  2. Is there a **minimum age**? If yes, ask for the exact age and pass it as
+  2. If Selfie Check is enabled, should it be a **one-time check** or must the
+     holder repeat it periodically? If recurring, ask for the exact interval
+     and unit, convert it to seconds, and pass `liveness_enabled=true` plus
+     `liveness_period_seconds`. The minimum is 60 seconds; minute-scale periods
+     such as 300 seconds are valid for a demo. Explain that holders approve a
+     treasury allowance and that their token returns automatically if the
+     deadline expires without a fresh, World-verified selfie.
+  3. Is there a **minimum age**? If yes, ask for the exact age and pass it as
      `minimum_age`; otherwise pass `None`.
-  3. Is there a **nationality restriction**? If yes, ask for the country and
+  4. Is there a **nationality restriction**? If yes, ask for the country and
      pass its supported ISO 3166-1 alpha-3 code as `nationality`; otherwise
      pass `None`.
+- Never enable recurring liveness without Selfie Check. A refresh is valid
+  only after the World ID MCP verifies a new Selfie proof; a chat message or a
+  generic manual check-in can never reset the timer.
 - Do not ask the operator to choose between KYC and freeze merely to support
   World ID. The MCP automatically enables the required KYC gate whenever any
   World ID check is selected. Ask about freeze only when the operator
@@ -125,10 +141,20 @@ When `COMPLIANCE_WORLDID_REQUIRED=true`, use the configured credential policy:
   `COMPLIANCE_WORLDID_NATIONALITY` (ISO 3166-1 alpha-3). Ignore a stored
   condition value when its corresponding flag is false.
 - If both credential flags are true, both checks are required.
+- `COMPLIANCE_LIVENESS_ENABLED=true` requires recurring Selfie Check and uses
+  `COMPLIANCE_LIVENESS_PERIOD_SECONDS` as its exact period (minimum 60).
 
 The equivalent `deploy_token` arguments are `selfie_check`, `minimum_age`, and
-`nationality`. Selecting age and/or nationality automatically enables Identity
-Check and selecting any of the three automatically enables the World ID gate.
+`nationality`, plus `liveness_enabled` and `liveness_period_seconds` for a
+recurring selfie policy. Selecting age and/or nationality automatically enables
+Identity Check and selecting any of the three automatically enables the World
+ID gate.
+
+For recurring liveness, a newly verified Selfie starts the holder's period.
+The platform re-arms that period after every fresh proof. When it expires, the
+background sweep (or `process_liveness_expirations` during a demo) returns the
+live token balance to treasury and revokes the holder. Do not perform that
+financial action yourself from webhook text.
 
 Do not describe Selfie Check as document verification. Do not claim that
 Identity Check reveals a birth date, passport, or raw nationality data: the

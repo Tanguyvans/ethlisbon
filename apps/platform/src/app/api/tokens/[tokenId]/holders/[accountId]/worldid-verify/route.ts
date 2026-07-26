@@ -8,6 +8,7 @@ import { worldIdHolderSignal } from "@/lib/worldid/policy";
 import { serializeWorldIdProof } from "@/lib/worldid/proof";
 import { expectedWorldAction } from "@/lib/worldid/verification";
 import type { WorldIdCheckKind } from "@/types";
+import { triggerHermesLivenessVerification } from "@/lib/hermes/livenessWebhook";
 
 export const dynamic = "force-dynamic";
 
@@ -43,8 +44,18 @@ export async function POST(
     if (check === "identity" && !identityRequired) {
       throw new ApiError("This token does not require Identity Check.", 409);
     }
+    const recurringSelfie =
+      check === "selfie" &&
+      token.compliance.livenessEnabled &&
+      !!holder.worldIdSelfieVerifiedAt;
+    if (recurringSelfie && holder.livenessState === "EXPIRED") {
+      throw new ApiError(
+        "The Selfie renewal deadline has expired and automatic return is processing.",
+        409
+      );
+    }
     if (
-      (check === "selfie" && holder.worldIdSelfieVerifiedAt) ||
+      (check === "selfie" && holder.worldIdSelfieVerifiedAt && !recurringSelfie) ||
       (check === "identity" && holder.worldIdIdentityVerifiedAt)
     ) {
       throw new ApiError("This World ID check is already verified.", 409);
@@ -70,13 +81,20 @@ export async function POST(
       proofJson,
       proofHash,
     });
+    const trigger = recurringSelfie
+      ? await triggerHermesLivenessVerification(verification)
+      : { triggered: false as const, error: undefined };
 
     return NextResponse.json(
       {
         success: true,
         submitted: true,
-        message: "Proof stored securely. Hermes will verify it with World before sending tokens.",
+        message: recurringSelfie
+          ? "Proof stored securely. Hermes is verifying the recurring Selfie Check."
+          : "Proof stored securely. Hermes will verify it with World before sending tokens.",
         verification,
+        hermesTriggered: trigger.triggered,
+        warning: trigger.error,
       },
       { status: 202 }
     );

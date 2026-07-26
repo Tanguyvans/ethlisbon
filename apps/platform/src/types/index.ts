@@ -94,6 +94,7 @@ export interface TokenRecord {
 }
 
 export type HolderStatus = "PENDING" | "WHITELISTED" | "REVOKED";
+export type LivenessReclaimStatus = "IDLE" | "PROCESSING" | "FAILED" | "COMPLETED";
 
 export interface HolderRecord {
   tokenId: string;
@@ -111,6 +112,9 @@ export interface HolderRecord {
   lastCheckinAt: string | null;
   activeScheduleId: string | null;
   activeScheduleExpiresAt: string | null;
+  livenessReclaimStatus: LivenessReclaimStatus;
+  livenessReclaimError: string | null;
+  livenessReclaimAttemptedAt: string | null;
   status: HolderStatus;
   livenessState: "DISABLED" | "OK" | "AT_RISK" | "EXPIRED";
   createdAt: string;

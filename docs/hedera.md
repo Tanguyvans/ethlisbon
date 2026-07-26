@@ -6,13 +6,15 @@
 - Native KYC, freeze, wipe, pause, supply, and fee-schedule keys enforce token lifecycle controls at network level.
 - Holder wallets sign token association and allowance transactions through WalletConnect before receiving assets.
 - Hermes can autonomously mint a treasury shortfall and transfer exactly one requested token on Hedera Testnet.
-- HashScan transaction links and Scheduled Transactions provide an auditable path for distribution and future liveness reclaim.
+- HashScan links, approved transfers, and Scheduled Transactions provide an auditable path for distribution and recurring-liveness reclaim.
 
 ## Implementation files
 
 - `apps/platform/src/lib/hedera/client.ts` — operator/treasury Hedera client.
 - `apps/platform/src/lib/hedera/tokenService.ts` — token creation, minting, KYC, freeze, wipe, pause, and transfers.
 - `apps/platform/src/lib/hedera/scheduleService.ts` — scheduled reclaim transactions.
+- `apps/platform/src/lib/hedera/mirrorNode.ts` — confirms holder-granted token allowances.
+- `apps/platform/src/lib/liveness.ts` — expiry worker and live-balance return to treasury.
 - `apps/platform/src/lib/hedera/format.ts` — network-aware HashScan links.
 - `apps/platform/src/hooks/useWalletConnect.tsx` — holder-signed association and allowance transactions.
 - `apps/platform/src/lib/walletconnect/connector.ts` — Hedera WalletConnect configuration.

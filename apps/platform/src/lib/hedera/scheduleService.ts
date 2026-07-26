@@ -3,6 +3,7 @@ import {
   ScheduleCreateTransaction,
   ScheduleDeleteTransaction,
   ScheduleId,
+  ScheduleInfoQuery,
   Timestamp,
   TokenId,
   TransferTransaction,
@@ -37,6 +38,11 @@ export interface ScheduleReclaimResult {
   expiresAt: string;
   txId: string;
   hashscanUrl: string;
+}
+
+export interface ScheduleReclaimStatus {
+  executedAt: string | null;
+  deletedAt: string | null;
 }
 
 export async function scheduleAutoReclaim(
@@ -94,4 +100,16 @@ export async function cancelScheduledReclaim(scheduleId: string): Promise<void> 
     const message = err instanceof Error ? err.message : String(err);
     if (!/INVALID_SCHEDULE_ID|SCHEDULE_ALREADY/i.test(message)) throw err;
   }
+}
+
+export async function getScheduledReclaimStatus(
+  scheduleId: string
+): Promise<ScheduleReclaimStatus> {
+  const info = await new ScheduleInfoQuery()
+    .setScheduleId(ScheduleId.fromString(scheduleId))
+    .execute(getOperatorClient());
+  return {
+    executedAt: info.executed?.toDate().toISOString() ?? null,
+    deletedAt: info.deleted?.toDate().toISOString() ?? null,
+  };
 }

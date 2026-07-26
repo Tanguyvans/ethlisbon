@@ -57,12 +57,21 @@ export const complianceSchema = z
     worldIdMinimumAge: z.number().int().min(1).max(120).optional(),
     worldIdNationality: worldIdNationalitySchema.optional(),
     livenessEnabled: z.boolean(),
-    livenessPeriodSeconds: z.number().int().positive().optional(),
+    livenessPeriodSeconds: z.number().int().min(60).optional(),
   })
   .refine((c) => !c.livenessEnabled || !!c.livenessPeriodSeconds, {
     message: "livenessPeriodSeconds is required when livenessEnabled is true",
     path: ["livenessPeriodSeconds"],
   })
+  .refine(
+    (c) =>
+      !c.livenessEnabled ||
+      (c.worldIdRequired && c.worldIdSelfieCheck),
+    {
+      message: "Recurring liveness requires World ID Selfie Check",
+      path: ["livenessEnabled"],
+    }
+  )
   .refine((c) => !c.worldIdRequired || c.kycRequired || c.freezeDefault, {
     message:
       "World ID verification needs a whitelisting mechanism to gate — enable KYC and/or freeze-by-default too",
@@ -109,6 +118,10 @@ export const createTokenSchema = z
     message: "maxSupply is required for a finite supply token",
     path: ["maxSupply"],
   })
+  .refine((v) => !v.compliance.livenessEnabled || v.tokenType === "FUNGIBLE", {
+    message: "Recurring Selfie Check currently supports fungible tokens only",
+    path: ["tokenType"],
+  })
   .refine((v) => v.tokenType === "NFT" || v.initialSupply >= 0, { message: "invalid initialSupply" });
 
 export const accountIdSchema = z
@@ -133,6 +146,10 @@ export const rejectTokenRequestSchema = z.object({
 
 export const txReceiptSchema = z.object({
   txId: z.string().trim().min(1),
+});
+
+export const allowanceReceiptSchema = txReceiptSchema.extend({
+  amount: z.number().int().positive(),
 });
 
 export const transferSchema = z.object({

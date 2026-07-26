@@ -141,6 +141,9 @@ TOKENIZATION_HOST = "127.0.0.1"
 TOKENIZATION_PORT = int(os.environ.get("TOKENIZATION_PORT", "3000"))
 TOKENIZATION_URL = f"http://{TOKENIZATION_HOST}:{TOKENIZATION_PORT}"
 TOKENIZATION_APP_DIR = Path(os.environ.get("TOKENIZATION_APP_DIR", "/app/tokenization"))
+LIVENESS_SWEEP_INTERVAL_SECONDS = max(
+    10, int(os.environ.get("LIVENESS_SWEEP_INTERVAL_SECONDS", "15"))
+)
 
 # Internal capabilities shared only by sibling processes in this container.
 # Operators may provide stable values through Railway, otherwise a fresh pair is generated on
@@ -150,6 +153,7 @@ TOKEN_REQUEST_WEBHOOK_SECRET = (
     os.environ.get("TOKEN_REQUEST_WEBHOOK_SECRET") or secrets.token_urlsafe(32)
 )
 TOKEN_REQUEST_WEBHOOK_URL = "http://127.0.0.1:8644/webhooks/token-request"
+LIVENESS_VERIFICATION_WEBHOOK_URL = "http://127.0.0.1:8644/webhooks/liveness-verification"
 
 # Header hermes' own SPA uses to present its per-process session token
 # (hermes_cli/web_server.py's _SESSION_HEADER_NAME) — see
@@ -406,6 +410,28 @@ def validate_world_id_policy(data: dict[str, str]) -> None:
     )
     minimum_age = data.get("COMPLIANCE_WORLDID_MINIMUM_AGE", "").strip()
     nationality = data.get("COMPLIANCE_WORLDID_NATIONALITY", "").strip().upper()
+    liveness_enabled = (
+        data.get("COMPLIANCE_LIVENESS_ENABLED", "").lower() == "true"
+    )
+    liveness_period = data.get(
+        "COMPLIANCE_LIVENESS_PERIOD_SECONDS", ""
+    ).strip()
+
+    if liveness_enabled and (not enabled or not selfie):
+        raise ValueError("Recurring liveness requires World ID Selfie Check.")
+    if liveness_enabled:
+        if not liveness_period:
+            raise ValueError("Enter a recurring Selfie Check period in seconds.")
+        try:
+            period_seconds = int(liveness_period)
+        except ValueError as exc:
+            raise ValueError(
+                "The recurring Selfie Check period must be a whole number."
+            ) from exc
+        if period_seconds < 60:
+            raise ValueError(
+                "The recurring Selfie Check period must be at least 60 seconds."
+            )
 
     if enabled and not selfie and not identity:
         raise ValueError("World ID requires Selfie Check and/or Identity Check.")
@@ -643,6 +669,21 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
             "the request; report the error and preserve its server-managed state. Never call "
             "distribute for this workflow, "
             "never change the destination or amount, and do not merely describe what should happen."
+        ),
+        "deliver": "log",
+    }
+    routes["liveness-verification"] = {
+        "events": ["liveness_verification"],
+        "secret": TOKEN_REQUEST_WEBHOOK_SECRET,
+        "prompt": (
+            "Holder {account_id} submitted recurring Selfie verification #{verification_id} "
+            "for token {token_id}. Use worldid MCP get_verification with this exact id, confirm "
+            "that it is a PENDING or retryable FAILED selfie attempt for the stated token and "
+            "holder, then call verify_pending_proof. The trusted backend will verify with World, "
+            "refresh the liveness timestamp, cancel the prior reclaim schedule, and arm the next "
+            "deadline. Re-read the holder with hedera get_token and report the resulting liveness "
+            "state. Never ask for raw proof JSON, never change any financial parameter, and do not "
+            "send, distribute, whitelist, revoke, or reclaim a token in this workflow."
         ),
         "deliver": "log",
     }
@@ -1526,6 +1567,8 @@ class TokenizationApp:
             "TOKENIZATION_AGENT_SECRET": TOKENIZATION_AGENT_SECRET,
             "HERMES_TOKEN_REQUEST_WEBHOOK_URL": TOKEN_REQUEST_WEBHOOK_URL,
             "HERMES_TOKEN_REQUEST_WEBHOOK_SECRET": TOKEN_REQUEST_WEBHOOK_SECRET,
+            "HERMES_LIVENESS_WEBHOOK_URL": LIVENESS_VERIFICATION_WEBHOOK_URL,
+            "HERMES_LIVENESS_WEBHOOK_SECRET": TOKEN_REQUEST_WEBHOOK_SECRET,
         })
         env.setdefault("DATABASE_PATH", "/data/tokenization/tokenization.db")
 
@@ -2380,6 +2423,37 @@ async def auto_start():
         print("[server] Config incomplete — gateway not started. Configure provider + model in the admin UI.", flush=True)
 
 
+async def liveness_sweep_loop():
+    """Drive deterministic expiry processing independently from LLM/cron availability."""
+    await asyncio.sleep(5)
+    last_error = ""
+    while True:
+        try:
+            response = await get_http_client().post(
+                f"{TOKENIZATION_URL}/api/liveness/process",
+                headers={"X-Tokenization-Agent-Secret": TOKENIZATION_AGENT_SECRET},
+                timeout=120.0,
+            )
+            if response.is_error:
+                error = f"HTTP {response.status_code}: {response.text[:200]}"
+                if error != last_error:
+                    print(f"[liveness] sweep failed: {error}", flush=True)
+                last_error = error
+            else:
+                last_error = ""
+                body = response.json()
+                if body.get("processed"):
+                    print(f"[liveness] processed {body['processed']} expired holder(s)", flush=True)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            error = repr(exc)
+            if error != last_error:
+                print(f"[liveness] sweep unavailable: {error}", flush=True)
+            last_error = error
+        await asyncio.sleep(LIVENESS_SWEEP_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(app):
     _sweep_stale_backup_tmpdirs()
@@ -2392,10 +2466,16 @@ async def lifespan(app):
     # and it's independent of gateway state.
     asyncio.create_task(dash.start())
     asyncio.create_task(tokenization.start())
+    liveness_task = asyncio.create_task(liveness_sweep_loop())
     await auto_start()
     try:
         yield
     finally:
+        liveness_task.cancel()
+        try:
+            await liveness_task
+        except asyncio.CancelledError:
+            pass
         await asyncio.gather(
             gw.stop(),
             dash.stop(),

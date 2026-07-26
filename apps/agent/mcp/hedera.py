@@ -45,6 +45,25 @@ class TokenizationApiError(RuntimeError):
     apps/platform/src/lib/api/helpers.ts:handleRoute)."""
 
 
+@mcp.prompt()
+def token_deployment_interview() -> str:
+    """Return the mandatory operator questions to ask before deploy_token."""
+    return """Before deploying an irreversible HTS token, ask and confirm:
+1. Token name.
+2. Fungible token or NFT, ticker, decimals, supply type and initial/max supply.
+3. RWA category.
+4. Should every holder complete World ID Selfie Check?
+5. If yes, is Selfie Check one-time or recurring? If recurring, ask the exact
+   interval and unit, convert it to seconds (minimum 60; 300 is five minutes),
+   and explain that an expired holder's balance returns to treasury.
+6. Is there a minimum-age requirement? Ask the exact age or record none.
+7. Is there a nationality restriction? Ask the exact supported country or
+   record none.
+8. Ask any independent freeze, wipe, pause, fee, or memo choices.
+Summarize every value and obtain final confirmation before deploy_token.
+Recurring liveness requires a fungible token and Selfie Check."""
+
+
 def _call(method: str, path: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
     url = f"{BASE_URL}{path}"
     headers = {"X-Tokenization-Agent-Secret": AGENT_SECRET} if AGENT_SECRET else {}
@@ -145,6 +164,17 @@ def reject_token_request(request_id: int, reason: str) -> dict[str, Any]:
 
 
 @mcp.tool()
+def process_liveness_expirations() -> dict[str, Any]:
+    """Run the deterministic recurring-liveness expiry sweep immediately.
+    This is useful for a minute-scale demo; production deployments also run
+    the same sweep automatically in the background. The backend chooses every
+    expired holder, live balance, and treasury destination from trusted state,
+    so this tool accepts no financial parameters.
+    """
+    return _call("POST", "/api/liveness/process")
+
+
+@mcp.tool()
 def deploy_token(
     name: str,
     symbol: str,
@@ -199,11 +229,14 @@ def deploy_token(
             3166-1 alpha-3 code. Supported values: ARG, AUS, CHL, COL, CRI,
             GBR, HRV, ITA, JPN, KOR, MEX, MYS, PAN, PRT, SGP, USA. Use None
             when no nationality restriction is wanted.
-        liveness_enabled: Enable recurring liveness re-checks with scheduled
-            auto-reclaim if a holder goes stale. Requires
-            liveness_period_seconds.
-        liveness_period_seconds: Liveness re-check period in seconds. Required
-            when liveness_enabled is true.
+        liveness_enabled: Require holders to repeat World ID Selfie Check and
+            automatically return their balance to treasury if they go stale.
+            Requires selfie_check and liveness_period_seconds.
+        liveness_period_seconds: Re-check period in seconds, minimum 60.
+            Minute-scale values are supported for demos (for example 300 is
+            five minutes). Policies up to 60 days also receive an on-chain
+            Hedera scheduled-transfer safety net; longer policies use the
+            deterministic background expiry worker.
     """
     if supply_type == "FINITE" and not max_supply:
         raise TokenizationApiError("max_supply is required when supply_type is FINITE.")
@@ -219,8 +252,22 @@ def deploy_token(
     # server grants it only after verification. Freeze remains a separate optional control.
     if world_id_required:
         kyc_required = True
-    if liveness_enabled and not liveness_period_seconds:
-        raise TokenizationApiError("liveness_period_seconds is required when liveness_enabled is true.")
+    if liveness_enabled and not selfie_check:
+        raise TokenizationApiError(
+            "Recurring liveness requires selfie_check=true."
+        )
+    if liveness_enabled and token_type.upper() != "FUNGIBLE":
+        raise TokenizationApiError(
+            "Recurring liveness currently supports FUNGIBLE tokens only."
+        )
+    if liveness_enabled and liveness_period_seconds is None:
+        raise TokenizationApiError(
+            "liveness_period_seconds is required when liveness_enabled is true."
+        )
+    if liveness_enabled and liveness_period_seconds < 60:
+        raise TokenizationApiError(
+            "liveness_period_seconds must be at least 60 (one minute)."
+        )
 
     body: dict[str, Any] = {
         "name": name,

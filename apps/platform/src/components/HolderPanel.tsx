@@ -41,19 +41,24 @@ export default function HolderPanel({
     [requests, accountId]
   );
   const worldIdReadyForHermes = hasRequiredWorldIdSubmission(token, holder);
+  const worldVerificationInFlight = [
+    holder?.worldIdSelfieVerification?.status,
+    holder?.worldIdIdentityVerification?.status,
+  ].some((status) => status === "PENDING" || status === "PROCESSING" || status === "FAILED");
+  const selfieCurrent =
+    !!holder?.worldIdSelfieVerifiedAt &&
+    (!token.compliance.livenessEnabled || holder.livenessState !== "EXPIRED");
 
   useEffect(() => {
-    if (
-      !tokenRequest ||
-      tokenRequest.triggerStatus !== "TRIGGERED" ||
-      tokenRequest.processingError ||
-      !["PENDING", "PROCESSING"].includes(tokenRequest.status)
-    ) {
-      return;
-    }
+    const requestInFlight =
+      !!tokenRequest &&
+      tokenRequest.triggerStatus === "TRIGGERED" &&
+      !tokenRequest.processingError &&
+      ["PENDING", "PROCESSING"].includes(tokenRequest.status);
+    if (!requestInFlight && !worldVerificationInFlight) return;
     const interval = window.setInterval(() => router.refresh(), 3_000);
     return () => window.clearInterval(interval);
-  }, [router, tokenRequest]);
+  }, [router, tokenRequest, worldVerificationInFlight]);
 
   async function run(key: string, fn: () => Promise<unknown>) {
     setBusy(key);
@@ -112,13 +117,18 @@ export default function HolderPanel({
           />
           {token.compliance.worldIdSelfieCheck && (
             <ChecklistRow
-              label="Complete World ID Selfie Check"
-              done={!!holder.worldIdSelfieVerifiedAt}
+              label={token.compliance.livenessEnabled ? "Keep World ID Selfie Check current" : "Complete World ID Selfie Check"}
+              done={selfieCurrent}
               extra={
-                <WorldIdVerificationNote
-                  verification={holder.worldIdSelfieVerification}
-                  fallback="World verifies fresh presence in the official World App."
-                />
+                <>
+                  <WorldIdVerificationNote
+                    verification={holder.worldIdSelfieVerification}
+                    fallback="World verifies fresh presence in the official World App."
+                  />
+                  {token.compliance.livenessEnabled && (
+                    <LivenessSummary holder={holder} periodSeconds={token.compliance.livenessPeriodSeconds} />
+                  )}
+                </>
               }
               action={
                 <HolderWorldIdCheck
@@ -126,6 +136,12 @@ export default function HolderPanel({
                   accountId={accountId}
                   check="selfie"
                   done={!!holder.worldIdSelfieVerifiedAt}
+                  allowRepeat={token.compliance.livenessEnabled}
+                  expired={
+                    token.compliance.livenessEnabled &&
+                    !!holder.lastCheckinAt &&
+                    holder.livenessState === "EXPIRED"
+                  }
                   pendingVerification={holder.worldIdSelfieVerification}
                   worldConfig={worldConfig}
                   onDone={() => router.refresh()}
@@ -159,35 +175,11 @@ export default function HolderPanel({
               }
             />
           )}
-          {token.tokenType === "FUNGIBLE" && (
-            <ChecklistRow
-              label={`Request 1 ${token.symbol}`}
-              done={tokenRequest?.status === "FULFILLED"}
-              extra={<TokenRequestSummary request={tokenRequest} />}
-              action={
-                <TokenRequestAction
-                  request={tokenRequest}
-                  disabled={!holder.associated || token.paused || !worldIdReadyForHermes}
-                  busy={busy === "token-request"}
-                  onRequest={() =>
-                    run("token-request", async () => {
-                      const result = await postJson<{
-                        triggered: boolean;
-                        warning?: string;
-                      }>(`/api/tokens/${token.id}/requests`, { accountId });
-                      if (!result.triggered && result.warning) {
-                        setNotice(`Request saved. Hermes could not start yet: ${result.warning}`);
-                      }
-                    })
-                  }
-                />
-              }
-            />
-          )}
           {token.compliance.livenessEnabled && (
             <ChecklistRow
-              label={`Approve reclaim allowance to ${OPERATOR_HINT}`}
+              label={`Approve automatic return to ${OPERATOR_HINT}`}
               done={holder.allowanceGranted}
+              extra={<span className="text-xs text-zinc-500">Required before the token can be sent.</span>}
               action={
                 holder.allowanceGranted ? (
                   <Badge tone="emerald">Granted</Badge>
@@ -212,18 +204,33 @@ export default function HolderPanel({
               }
             />
           )}
-          {token.compliance.livenessEnabled && holder.allowanceGranted && (
+          {token.tokenType === "FUNGIBLE" && (
             <ChecklistRow
-              label="Liveness check-in"
-              done={false}
-              extra={<LivenessSummary holder={holder} periodSeconds={token.compliance.livenessPeriodSeconds} />}
+              label={`Request 1 ${token.symbol}`}
+              done={tokenRequest?.status === "FULFILLED"}
+              extra={<TokenRequestSummary request={tokenRequest} />}
               action={
-                <Button
-                  disabled={busy === "checkin"}
-                  onClick={() => run("checkin", () => postJson(`/api/tokens/${token.id}/holders/${accountId}/checkin`))}
-                >
-                  {busy === "checkin" ? "Checking in…" : "Check in now"}
-                </Button>
+                <TokenRequestAction
+                  request={tokenRequest}
+                  disabled={
+                    !holder.associated ||
+                    token.paused ||
+                    !worldIdReadyForHermes ||
+                    (token.compliance.livenessEnabled && !holder.allowanceGranted)
+                  }
+                  busy={busy === "token-request"}
+                  onRequest={() =>
+                    run("token-request", async () => {
+                      const result = await postJson<{
+                        triggered: boolean;
+                        warning?: string;
+                      }>(`/api/tokens/${token.id}/requests`, { accountId });
+                      if (!result.triggered && result.warning) {
+                        setNotice(`Request saved. Hermes could not start yet: ${result.warning}`);
+                      }
+                    })
+                  }
+                />
               }
             />
           )}
@@ -400,14 +407,16 @@ function StatusBadge({ status }: { status: HolderRecord["status"] }) {
 }
 
 function LivenessSummary({ holder, periodSeconds }: { holder: HolderRecord; periodSeconds?: number }) {
-  if (!holder.lastCheckinAt) return <span className="text-xs text-zinc-500">Never checked in</span>;
+  if (!holder.lastCheckinAt || !periodSeconds) {
+    return <span className="text-xs text-zinc-500">The first verified selfie starts the renewal period.</span>;
+  }
   const last = new Date(holder.lastCheckinAt).toLocaleString();
-  const expires = holder.activeScheduleExpiresAt ? new Date(holder.activeScheduleExpiresAt).toLocaleString() : null;
+  const deadline = new Date(new Date(holder.lastCheckinAt).getTime() + periodSeconds * 1000).toLocaleString();
   return (
-    <span className="text-xs text-zinc-500">
-      Last check-in {last}
-      {expires && ` · auto-reclaim scheduled ${expires} if you don't check in again`}
-      {periodSeconds && !expires && ` · period ${Math.round(periodSeconds / 60)} min`}
+    <span className={`text-xs ${holder.livenessState === "EXPIRED" ? "text-red-600" : "text-zinc-500"}`}>
+      Selfie verified {last} · renew by {deadline}
+      {holder.livenessState === "EXPIRED" && " · expired; automatic return is processing"}
+      {holder.livenessReclaimError && ` · return failed: ${holder.livenessReclaimError}`}
     </span>
   );
 }
@@ -474,7 +483,7 @@ function AllowanceButton({
         onError("");
         try {
           const txId = await approveAllowance(tokenId, treasuryAccountId, amount);
-          await postJson(`/api/tokens/${tokenId}/holders/${accountId}/allowance`, { txId });
+          await postJson(`/api/tokens/${tokenId}/holders/${accountId}/allowance`, { txId, amount });
           onDone();
         } catch (err) {
           onError(err instanceof Error ? err.message : "Allowance approval failed");

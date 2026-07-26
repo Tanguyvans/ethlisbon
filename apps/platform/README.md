@@ -39,12 +39,14 @@ src/
     hedera/
       client.ts                 operator/treasury Client singleton
       tokenService.ts           TokenCreate/GrantKyc/Freeze/Wipe/Pause/Transfer
-      scheduleService.ts        long-term Scheduled Transactions for auto-reclaim
+      scheduleService.ts        Scheduled Transaction safety net for auto-reclaim
+      mirrorNode.ts             confirms holder-granted token allowances
       format.ts                 HashScan link helpers
     db/                         better-sqlite3 (schema in schema.ts, queries in repo.ts)
     walletconnect/connector.ts  browser DAppConnector singleton
     worldid/verification.ts     shared World verification API client
     worldid/pendingVerification.ts agent-triggered proof queue executor
+    liveness.ts                 selfie deadlines + deterministic reclaim worker
     validation.ts               zod schemas for every API route
   types/index.ts                shared domain types
 ```
@@ -67,7 +69,7 @@ library) prints its own deprecation notice ("will be shut down by 2026"), so it 
 | Enable pause                           | `pauseKey`; admin `TokenPauseTransaction`                    |
 | Custom fee                             | `feeScheduleKey` + `CustomFixedFee` / `CustomFractionalFee` / `CustomRoyaltyFee` |
 | Require World ID before whitelisting   | Server-verified World credential gate on top of KYC/freeze |
-| Liveness check-ins & auto-reclaim      | Holder-granted token allowance + long-term **Scheduled Transaction** (see below) |
+| Recurring Selfie Check & auto-reclaim  | World-verified renewal + token allowance + worker/**Scheduled Transaction** (see below) |
 
 Whitelisting an address = granting KYC and/or unfreezing it, whichever mechanism(s) the token
 was created with. Both are real, independent HTS controls — a token can require either, both,
@@ -75,26 +77,34 @@ or neither.
 
 ## Liveness / auto-reclaim mechanism
 
-This is the "if the person hasn't checked in for X time, tokens can be reclaimed" feature.
+This is the "if the person has not repeated Selfie Check within X time, return
+their token balance to treasury" feature. The minimum policy is 60 seconds, so
+minute-scale periods can be used in a demo; production policies can use days or
+months.
 
 1. A holder who wants to receive a liveness-gated token approves a **token allowance** to the
    treasury (`AccountAllowanceApproveTransaction`, signed by their own wallet). This lets the
    treasury move tokens *out* of the holder's account later without needing another signature.
-2. On check-in (or first receiving an allowance), the backend creates a **long-term Hedera
-   Scheduled Transaction** — [HIP-423](https://hips.hedera.com/hip/hip-423): a
+2. A fresh Selfie proof is queued and Hermes verifies it with World. Only that
+   trusted result starts or renews the holder's deadline; there is no manual
+   check-in endpoint.
+3. For periods up to 60 days, the backend also creates a **Hedera Scheduled
+   Transaction** — [HIP-423](https://hips.hedera.com/hip/hip-423): a
    `TransferTransaction` (using the approved allowance) wrapped in `ScheduleCreateTransaction`
    with `setExpirationTime(...)` + `setWaitForExpiry(true)`. The operator's signature (as the
-   spender) is attached at creation time, so the network just waits and auto-executes the
-   reclaim at the expiry — **no cron job or bot required**.
-3. Checking in again cancels the pending schedule (`ScheduleDeleteTransaction`) and creates a
-   fresh one further out.
+   spender) is attached at creation time, so the network can execute the reclaim
+   at expiry.
+4. A deterministic internal worker covers every duration, checks the live
+   holder balance, performs the approved transfer if needed, then revokes KYC
+   and/or freezes the account. A fresh verified selfie cancels the previous
+   schedule and arms the next deadline.
 
 Caveats (documented in code comments too):
-- A scheduled transaction's amount is fixed at creation time — it captures the holder's
-  *current* balance. Receiving more tokens without checking in again won't be covered by an
-  already-scheduled reclaim.
-- Hedera caps how far in the future a schedule's expiry can be — pick a demo-friendly period
-  (minutes) rather than a realistic one (months) if you want to actually see it fire live.
+- A scheduled transaction's amount is fixed at creation time. The worker reads
+  the live balance at expiry, so it is the authoritative fallback if the amount
+  changed or the schedule could not execute.
+- Hedera caps a schedule expiry at 62 days. The platform uses schedules up to
+  60 days and the worker for longer policies such as 90 days.
 
 ## World ID access demo
 
@@ -121,10 +131,9 @@ separate `worldid` MCP:
   holder is allowed to refresh a future liveness timestamp; an exact proof
   payload replay remains rejected.
 
-Recurring Selfie Check will use a fresh per-check challenge or a World ID 4
-session. The current schema already permits repeated verified checks for the
-same token and holder, but the holder UI does not schedule those periodic
-checks yet.
+Recurring Selfie Check uses a fresh World flow for every renewal. Hermes
+re-verifies the queued proof through the World MCP, after which the backend
+restarts the deadline and re-arms automatic return.
 
 Configure `NEXT_PUBLIC_WORLD_APP_ID`, `WORLD_RP_ID`,
 `WORLD_RP_SIGNING_KEY`, `WORLD_ACTION`, and `WORLD_IDENTITY_ACTION` as
@@ -167,8 +176,7 @@ isolated development reference, but no production holder route calls it.
   serials / per-serial transfer management isn't built — the workspace UI shows a placeholder
   for non-fungible tokens on the distribute/reclaim panels.
 - **Association & allowance verification**: association is confirmed server-side via an
-  `AccountBalanceQuery` before being trusted; allowance approval is currently trusted from the
-  client-reported transaction id. A production build should also verify allowances via the
-  mirror node's `/accounts/{id}/allowances/tokens` endpoint.
+  `AccountBalanceQuery`; allowance approval is confirmed through Hedera Mirror Node before it
+  unlocks distribution.
 - Amounts throughout the API/UI are in the token's **base units** (respecting whatever
   `decimals` it was created with), not decimal-adjusted display units.

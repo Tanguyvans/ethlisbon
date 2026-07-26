@@ -76,6 +76,7 @@ Message your Telegram bot. If you're a new user, a pairing request will appear i
 | `WALLETCONNECT_PROJECT_ID` | *(required for wallet connection)* | Reown project ID served to the wallet client at runtime. |
 | `TOKENIZATION_APP_URL` | *(derived from browser URL)* | Optional canonical public URL (your root deploy URL), used in wallet metadata. |
 | `DATABASE_PATH` | `/data/tokenization/tokenization.db` | Persistent SQLite database path in the Railway volume. |
+| `LIVENESS_SWEEP_INTERVAL_SECONDS` | `15` | Internal recurring-Selfie expiry sweep interval; minimum 10 seconds. |
 
 All other configuration (LLM provider, model, channels, tools) is managed through the admin dashboard.
 
@@ -95,6 +96,14 @@ Costa Rica (`CRI`), Croatia (`HRV`), Italy (`ITA`), Japan (`JPN`), Malaysia
 (`MYS`), Mexico (`MEX`), Panama (`PAN`), Portugal (`PRT`), Singapore (`SGP`),
 South Korea (`KOR`), United Kingdom (`GBR`), and United States (`USA`).
 Availability can expand as World adds document support.
+
+Selfie Check can also be made recurring. The creator chooses the exact renewal
+period in seconds (minimum 60; `300` gives a five-minute demo). Each new proof
+is verified through Hermes and World before the deadline moves. A holder first
+approves a Hedera token allowance; if the verified selfie expires, the internal
+worker returns the holder's live balance to treasury and revokes access. For
+periods up to 60 days, an on-chain Hedera Scheduled Transaction is armed as an
+additional safety net.
 
 ## Supported Providers
 

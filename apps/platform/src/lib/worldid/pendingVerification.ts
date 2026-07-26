@@ -19,13 +19,16 @@ import {
   WorldProofError,
 } from "@/lib/worldid/verification";
 import type { HolderRecord, WorldIdVerificationRecord } from "@/types";
+import { recordVerifiedSelfieLiveness } from "@/lib/liveness";
 
 export type WorldIdExecutionResult = {
   verification: WorldIdVerificationRecord;
   holder: HolderRecord;
 };
 
-function applyVerifiedCheck(verification: WorldIdVerificationRecord): HolderRecord {
+async function applyVerifiedCheck(
+  verification: WorldIdVerificationRecord
+): Promise<HolderRecord> {
   const token = getToken(verification.tokenId);
   const holder = getHolder(verification.tokenId, verification.accountId);
   if (!token || !holder) {
@@ -55,6 +58,13 @@ function applyVerifiedCheck(verification: WorldIdVerificationRecord): HolderReco
     worldIdIdentityVerifiedAt: identityVerifiedAt,
     worldIdVerifiedAt: allRequiredChecksPassed ? verification.verifiedAt : null,
   });
+  if (verification.check === "selfie") {
+    await recordVerifiedSelfieLiveness(
+      verification.tokenId,
+      verification.accountId,
+      verification.verifiedAt
+    );
+  }
   return getHolder(verification.tokenId, verification.accountId)!;
 }
 
@@ -65,8 +75,21 @@ export async function executeWorldIdVerification(
 ): Promise<WorldIdExecutionResult> {
   const existing = getWorldIdVerification(id);
   if (!existing) throw new ApiError(`World ID verification ${id} not found`, 404);
+  const liveToken = getToken(existing.tokenId);
+  const liveHolder = getHolder(existing.tokenId, existing.accountId);
+  if (
+    existing.status !== "VERIFIED" &&
+    existing.check === "selfie" &&
+    liveToken?.compliance.livenessEnabled &&
+    liveHolder?.lastCheckinAt &&
+    liveHolder.livenessState === "EXPIRED"
+  ) {
+    const message = "The Selfie renewal deadline expired before this proof was verified.";
+    failWorldIdVerification(id, "liveness_deadline_expired", message, true);
+    throw new ApiError(message, 409);
+  }
   if (existing.status === "VERIFIED") {
-    return { verification: existing, holder: applyVerifiedCheck(existing) };
+    return { verification: existing, holder: await applyVerifiedCheck(existing) };
   }
   if (existing.status === "REJECTED") {
     throw new ApiError(
@@ -118,7 +141,7 @@ export async function executeWorldIdVerification(
     }
 
     const verification = getWorldIdVerification(id)!;
-    const holder = applyVerifiedCheck(verification);
+    const holder = await applyVerifiedCheck(verification);
     insertEvent({
       tokenId: verification.tokenId,
       accountId: verification.accountId,

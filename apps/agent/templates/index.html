@@ -1243,15 +1243,16 @@
                class="hint" style="color:var(--yellow);padding:0 0 8px 26px;">
             ⚠ World ID needs a whitelisting mechanism — also enable KYC and/or freeze-by-default.
           </div>
-          <div class="toggle-row" style="border-bottom:none;" @click="toggleFlag('COMPLIANCE_LIVENESS_ENABLED')">
-            <input type="checkbox" :checked="flag('COMPLIANCE_LIVENESS_ENABLED')" @click.stop @change="setFlag('COMPLIANCE_LIVENESS_ENABLED',$event.target.checked)">
-            <span class="toggle-label">Liveness re-check</span>
-            <span style="font-size:11px;color:var(--text-dim);margin-left:8px;">holders must re-verify periodically</span>
+          <div class="toggle-row" style="border-bottom:none;" @click="setLivenessEnabled(!flag('COMPLIANCE_LIVENESS_ENABLED'))">
+            <input type="checkbox" :checked="flag('COMPLIANCE_LIVENESS_ENABLED')" @click.stop @change="setLivenessEnabled($event.target.checked)">
+            <span class="toggle-label">Recurring Selfie Check</span>
+            <span style="font-size:11px;color:var(--text-dim);margin-left:8px;">stale holder balances return to treasury</span>
           </div>
           <div class="toggle-body" style="border-bottom:none;" x-show="flag('COMPLIANCE_LIVENESS_ENABLED')">
-            <label class="field-label">Liveness period (seconds)</label>
-            <input type="text" inputmode="numeric" :value="vars.COMPLIANCE_LIVENESS_PERIOD_SECONDS||''" @input="vars.COMPLIANCE_LIVENESS_PERIOD_SECONDS=$event.target.value" placeholder="2592000" style="max-width:220px;">
-            <p class="hint">e.g. <code>2592000</code> = 30 days.</p>
+            <label class="field-label">Selfie renewal period (seconds)</label>
+            <input type="number" min="60" step="1" :value="vars.COMPLIANCE_LIVENESS_PERIOD_SECONDS||''" @input="vars.COMPLIANCE_LIVENESS_PERIOD_SECONDS=$event.target.value" placeholder="2592000" style="max-width:220px;">
+            <p class="hint"><code>300</code> = 5 minutes for a demo · <code>7776000</code> = 90 days.</p>
+            <p class="hint" style="color:var(--yellow);" x-show="worldIdPolicyError && flag('COMPLIANCE_LIVENESS_ENABLED')" x-text="'⚠ '+worldIdPolicyError"></p>
           </div>
         </div>
 
@@ -1525,8 +1526,19 @@ function app() {
     },
 
     get worldIdPolicyError() {
-      if (!this.flag('COMPLIANCE_WORLDID_REQUIRED')) return '';
+      const liveness = this.flag('COMPLIANCE_LIVENESS_ENABLED');
       const selfie = this.flag('COMPLIANCE_WORLDID_SELFIE_CHECK');
+      if (liveness && (!this.flag('COMPLIANCE_WORLDID_REQUIRED') || !selfie)) {
+        return 'Recurring liveness requires World ID Selfie Check.';
+      }
+      if (liveness) {
+        const period = String(this.vars.COMPLIANCE_LIVENESS_PERIOD_SECONDS || '').trim();
+        if (!period) return 'Enter a recurring Selfie Check period in seconds.';
+        if (!Number.isInteger(Number(period)) || Number(period) < 60) {
+          return 'The recurring Selfie Check period must be a whole number of at least 60 seconds.';
+        }
+      }
+      if (!this.flag('COMPLIANCE_WORLDID_REQUIRED')) return '';
       const identity = this.flag('COMPLIANCE_WORLDID_IDENTITY_CHECK');
       if (!selfie && !identity) return 'Select Selfie Check and/or Identity Check.';
       if (!identity) return '';
@@ -1547,6 +1559,14 @@ function app() {
     flag(k)          { return this.vars[k] === 'true'; },
     setFlag(k, val)  { this.vars[k] = val ? 'true' : 'false'; },
     toggleFlag(k)    { this.setFlag(k, !this.flag(k)); },
+    setLivenessEnabled(val) {
+      this.setFlag('COMPLIANCE_LIVENESS_ENABLED', val);
+      if (val) {
+        this.setFlag('COMPLIANCE_WORLDID_REQUIRED', true);
+        this.setFlag('COMPLIANCE_WORLDID_SELFIE_CHECK', true);
+        this.setFlag('COMPLIANCE_KYC_REQUIRED', true);
+      }
+    },
 
     onProviderChange() {
       const p = this.providerMap[this.selectedProvider];

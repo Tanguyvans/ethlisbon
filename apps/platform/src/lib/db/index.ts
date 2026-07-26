@@ -27,9 +27,27 @@ function openDb(): Database.Database {
   db.exec(SCHEMA_SQL);
   migrateTokenCompliancePolicy(db);
   migrateHolderWorldIdProofs(db);
+  migrateHolderLivenessState(db);
   migrateWorldIdVerificationQueue(db);
 
   return db;
+}
+
+/** Persist reclaim attempts so a restarted worker cannot double-submit or retry a broken
+ * allowance every few seconds on an existing Railway volume. */
+function migrateHolderLivenessState(db: Database.Database): void {
+  const columns = new Set(
+    (db.pragma("table_info(holders)") as Array<{ name: string }>).map((column) => column.name)
+  );
+  const additions = [
+    ["liveness_reclaim_status", "TEXT NOT NULL DEFAULT 'IDLE'"],
+    ["liveness_reclaim_error", "TEXT"],
+    ["liveness_reclaim_attempted_at", "TEXT"],
+  ] as const;
+
+  for (const [name, definition] of additions) {
+    if (!columns.has(name)) db.exec(`ALTER TABLE holders ADD COLUMN ${name} ${definition}`);
+  }
 }
 
 /** Keep the proof queue compatible with existing Railway volumes. Nullifiers identify a person

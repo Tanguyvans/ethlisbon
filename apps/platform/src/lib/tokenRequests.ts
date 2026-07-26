@@ -16,6 +16,7 @@ import {
 } from "@/lib/hedera/tokenService";
 import type { HolderRecord, TokenRecord, TokenRequestRecord } from "@/types";
 import { hasRequiredWorldIdVerification } from "@/lib/worldid/policy";
+import { armLivenessReclaim } from "@/lib/liveness";
 
 export function oneDisplayTokenInBaseUnits(decimals: number): string {
   return (BigInt(10) ** BigInt(decimals)).toString();
@@ -152,6 +153,11 @@ export async function fulfillStoredTokenRequest(requestId: number): Promise<Toke
     txId: result.txId,
     hashscanUrl: result.hashscanUrl,
   });
+  if (token.compliance.livenessEnabled) {
+    // The first verified selfie happens before distribution, when there is no holder balance
+    // to schedule. Arm the reclaim immediately after the token reaches the holder.
+    await armLivenessReclaim(claimed.tokenId, claimed.accountId);
+  }
   return fulfilled;
 }
 

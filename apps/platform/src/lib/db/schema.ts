@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS holders (
   last_checkin_at              TEXT,
   active_schedule_id            TEXT,                  -- pending Hedera ScheduleId for auto-reclaim, if any
   active_schedule_expires_at    TEXT,
+  liveness_reclaim_status       TEXT NOT NULL DEFAULT 'IDLE', -- IDLE | PROCESSING | FAILED | COMPLETED
+  liveness_reclaim_error        TEXT,
+  liveness_reclaim_attempted_at TEXT,
 
   status                      TEXT NOT NULL DEFAULT 'PENDING', -- PENDING | WHITELISTED | REVOKED
   created_at                  TEXT NOT NULL DEFAULT (datetime('now')),

@@ -29,6 +29,8 @@ export default function HolderWorldIdCheck({
   accountId,
   check,
   done,
+  allowRepeat = false,
+  expired = false,
   pendingVerification,
   worldConfig,
   onDone,
@@ -38,6 +40,8 @@ export default function HolderWorldIdCheck({
   accountId: string;
   check: CheckKind;
   done: boolean;
+  allowRepeat?: boolean;
+  expired?: boolean;
   pendingVerification: WorldIdVerificationRecord | null;
   worldConfig: WorldIdClientConfig;
   onDone: () => void;
@@ -104,20 +108,49 @@ export default function HolderWorldIdCheck({
     }
   }
 
+  async function retryHermes() {
+    if (!pendingVerification) return;
+    setPreparing(true);
+    onError("");
+    try {
+      await postJson(
+        `/api/tokens/${token.id}/holders/${accountId}/worldid-retry`,
+        { verificationId: pendingVerification.id }
+      );
+      onDone();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Hermes could not be restarted.");
+    } finally {
+      setPreparing(false);
+    }
+  }
+
   return (
     <>
       <Button
         variant="secondary"
-        disabled={done || submitted || preparing || !worldConfig.isConfigured}
-        onClick={startVerification}
+        disabled={
+          (done && !allowRepeat) ||
+          expired ||
+          pendingVerification?.status === "PROCESSING" ||
+          preparing ||
+          !worldConfig.isConfigured
+        }
+        onClick={submitted ? retryHermes : startVerification}
         title={!worldConfig.isConfigured ? "World ID credentials are not configured." : undefined}
       >
-        {done
-          ? "Verified"
+        {expired
+          ? "Expired"
           : pendingVerification?.status === "PROCESSING"
-            ? "Hermes verifying…"
-            : submitted
-              ? "Ready for Hermes"
+          ? "Hermes verifying…"
+          : submitted
+            ? preparing
+              ? "Starting Hermes…"
+              : "Retry Hermes"
+          : done && allowRepeat
+            ? "Renew Selfie Check"
+          : done
+            ? "Verified"
           : preparing
             ? "Preparing…"
             : !worldConfig.isConfigured

@@ -6,6 +6,7 @@ import type {
   EventType,
   HolderRecord,
   HolderStatus,
+  LivenessReclaimStatus,
   TokenRecord,
   TokenRequestRecord,
   TokenRequestStatus,
@@ -71,6 +72,9 @@ interface HolderRow {
   last_checkin_at: string | null;
   active_schedule_id: string | null;
   active_schedule_expires_at: string | null;
+  liveness_reclaim_status: string;
+  liveness_reclaim_error: string | null;
+  liveness_reclaim_attempted_at: string | null;
   status: string;
   created_at: string;
   updated_at: string;
@@ -177,12 +181,11 @@ function mapToken(row: TokenRow): TokenRecord {
 
 function livenessState(
   compliance: ComplianceOptions,
-  lastCheckinAt: string | null,
-  createdAt: string
+  lastCheckinAt: string | null
 ): HolderRecord["livenessState"] {
   if (!compliance.livenessEnabled || !compliance.livenessPeriodSeconds) return "DISABLED";
-  const anchor = lastCheckinAt ?? createdAt;
-  const elapsedMs = Date.now() - new Date(anchor).getTime();
+  if (!lastCheckinAt) return "EXPIRED";
+  const elapsedMs = Date.now() - new Date(lastCheckinAt).getTime();
   const periodMs = compliance.livenessPeriodSeconds * 1000;
   if (elapsedMs >= periodMs) return "EXPIRED";
   if (elapsedMs >= periodMs * 0.5) return "AT_RISK";
@@ -214,8 +217,11 @@ function mapHolder(row: HolderRow, compliance: ComplianceOptions): HolderRecord 
     lastCheckinAt: row.last_checkin_at,
     activeScheduleId: row.active_schedule_id,
     activeScheduleExpiresAt: row.active_schedule_expires_at,
+    livenessReclaimStatus: row.liveness_reclaim_status as LivenessReclaimStatus,
+    livenessReclaimError: row.liveness_reclaim_error,
+    livenessReclaimAttemptedAt: row.liveness_reclaim_attempted_at,
     status: row.status as HolderStatus,
-    livenessState: livenessState(compliance, row.last_checkin_at, row.created_at),
+    livenessState: livenessState(compliance, row.last_checkin_at),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -407,6 +413,9 @@ export interface HolderPatch {
   lastCheckinAt?: string | null;
   activeScheduleId?: string | null;
   activeScheduleExpiresAt?: string | null;
+  livenessReclaimStatus?: LivenessReclaimStatus;
+  livenessReclaimError?: string | null;
+  livenessReclaimAttemptedAt?: string | null;
   status?: HolderStatus;
 }
 
@@ -421,6 +430,9 @@ const PATCH_COLUMN: Record<keyof HolderPatch, string> = {
   lastCheckinAt: "last_checkin_at",
   activeScheduleId: "active_schedule_id",
   activeScheduleExpiresAt: "active_schedule_expires_at",
+  livenessReclaimStatus: "liveness_reclaim_status",
+  livenessReclaimError: "liveness_reclaim_error",
+  livenessReclaimAttemptedAt: "liveness_reclaim_attempted_at",
   status: "status",
 };
 
@@ -438,6 +450,28 @@ export function updateHolder(tokenId: string, accountId: string, patch: HolderPa
   getDb()
     .prepare(`UPDATE holders SET ${setClauses.join(", ")} WHERE token_id = ? AND account_id = ?`)
     .run(...values, tokenId, accountId);
+}
+
+/** Claim one expired holder for a single reclaim attempt. Failed attempts are retried at most
+ * once per minute; a process that died mid-flight can be recovered after five minutes. */
+export function claimLivenessReclaim(tokenId: string, accountId: string): boolean {
+  const result = getDb()
+    .prepare(
+      `UPDATE holders
+       SET liveness_reclaim_status = 'PROCESSING', liveness_reclaim_error = NULL,
+           liveness_reclaim_attempted_at = datetime('now'), updated_at = datetime('now')
+       WHERE token_id = ? AND account_id = ? AND status = 'WHITELISTED'
+         AND (
+           liveness_reclaim_status = 'IDLE'
+           OR (liveness_reclaim_status = 'FAILED'
+               AND (liveness_reclaim_attempted_at IS NULL
+                    OR liveness_reclaim_attempted_at <= datetime('now', '-1 minute')))
+           OR (liveness_reclaim_status = 'PROCESSING'
+               AND liveness_reclaim_attempted_at <= datetime('now', '-5 minutes'))
+         )`
+    )
+    .run(tokenId, accountId);
+  return result.changes === 1;
 }
 
 // --- token requests (holder -> Hermes -> one treasury token) ---
