@@ -990,6 +990,38 @@ def write_pr_env_file() -> None:
     lines = [f"{key}={value}" for key, value in sorted(env.items()) if key != "HERMES_HOME"]
     PR_HOME.mkdir(parents=True, exist_ok=True)
     (PR_HOME / ".env").write_text("\n".join(lines) + "\n")
+    sync_pr_auth_json()
+
+
+def sync_pr_auth_json() -> None:
+    """Mirror $HERMES_HOME/auth.json into the pr profile's own home, if present.
+
+    Some providers (e.g. openai-codex, xAI) authenticate via an OAuth session
+    stored in auth.json rather than a plain env-var API key — PR_SAFE_ENV_KEYS
+    only ever covers the latter. Without this, the pr profile's config.yaml
+    can correctly say `provider: openai-codex` (just a string, copied fine)
+    while having no actual session to use it with, so its gateway starts and
+    immediately fails to authenticate — looking identical to the working
+    profile in config, but dying right after start (which is what "Gateway
+    stopped"/not auto-starting looks like from the dashboard).
+
+    Trade-off worth knowing: this makes both gateways share ONE OAuth session.
+    If that provider's account has any single-session enforcement, or rotates
+    its refresh token on use, running both concurrently could occasionally
+    invalidate one side. A plain API-key provider (ANTHROPIC_API_KEY,
+    OPENAI_API_KEY, etc.) has no such issue and needs no file copy at all —
+    consider that for the pr profile specifically if this becomes a problem.
+    """
+    source = Path(HERMES_HOME) / "auth.json"
+    if not source.is_file():
+        return
+    dest = PR_HOME / "auth.json"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(source.read_bytes())
+    try:
+        dest.chmod(0o600)
+    except OSError:
+        pass
 
 
 def write_env(path: Path, data: dict[str, str]) -> None:
