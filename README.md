@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="brand/banner-16x9.png" alt="ethlisbon banner" width="100%" />
+  <img src="brand/banner-16x9.png" alt="Mint &amp; Chill banner" width="100%" />
 </p>
 
-# Hermes — Agent-Operated RWA Marketplace
+# Mint & Chill — Agent-Operated RWA Marketplace
 
 Deploy this repo on Railway and get a ready-to-use, agent-operated platform
 for creating and distributing tokenized assets. Hermes launches tokens on
