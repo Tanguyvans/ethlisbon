@@ -429,13 +429,14 @@ a:focus-visible {
 .rwa-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-auto-rows: 28rem;
   gap: 0.8rem;
 }
 
 .rwa-card {
   position: relative;
   grid-column: span 2;
-  min-height: 28rem;
+  height: 100%;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 0.65rem;
@@ -443,11 +444,6 @@ a:focus-visible {
   background: var(--surface-strong);
   box-shadow: 0 1px 1px rgb(23 32 27 / 0.025);
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-}
-
-.rwa-card:nth-last-child(-n + 2) {
-  grid-column: span 3;
-  min-height: 26rem;
 }
 
 .rwa-card::before {
@@ -926,8 +922,7 @@ a:focus-visible {
     margin: 0 2.2rem 2.2rem;
   }
 
-  .rwa-card,
-  .rwa-card:nth-last-child(-n + 2) {
+  .rwa-card {
     grid-column: span 3;
   }
 }
@@ -1022,10 +1017,12 @@ a:focus-visible {
     padding-top: 2.5rem;
   }
 
-  .rwa-card,
-  .rwa-card:nth-last-child(-n + 2) {
+  .rwa-grid {
+    grid-auto-rows: 27rem;
+  }
+
+  .rwa-card {
     grid-column: 1 / -1;
-    min-height: 27rem;
   }
 
   .rwa-access-panel {
