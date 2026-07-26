@@ -35,6 +35,10 @@ function contract(address: string): Contract {
   return new Contract(getAddress(address), artifact.abi, getEvmOperator());
 }
 
+function readContract(address: string): Contract {
+  return new Contract(getAddress(address), artifact.abi, getSepoliaProvider());
+}
+
 async function submit(txPromise: Promise<{ hash: string; wait: () => Promise<unknown> }>) {
   await assertSepolia();
   const tx = await txPromise;
@@ -119,12 +123,12 @@ export function transferEvmFromTreasury(tokenId: string, account: string, amount
 
 export async function getEvmTokenBalance(tokenId: string, account: string): Promise<bigint> {
   await assertSepolia();
-  return BigInt(await contract(tokenId).balanceOf(getAddress(account)));
+  return BigInt(await readContract(tokenId).balanceOf(getAddress(account)));
 }
 
 export async function getEvmAllowance(tokenId: string, owner: string): Promise<bigint> {
   await assertSepolia();
-  return BigInt(await contract(tokenId).allowance(getAddress(owner), getEvmOperatorAddress()));
+  return BigInt(await readContract(tokenId).allowance(getAddress(owner), getEvmOperatorAddress()));
 }
 
 export async function reclaimEvmViaAllowance(tokenId: string, account: string) {

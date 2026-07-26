@@ -10,9 +10,12 @@ import type { TokenRecord } from "@/types";
  * positive balance (e.g. requested-but-not-fulfilled, or since reclaimed).
  */
 export async function hasPositiveBalance(token: TokenRecord, accountId: string): Promise<boolean> {
-  const balance =
-    token.blockchain === "EVM"
-      ? await getEvmTokenBalance(token.id, accountId)
-      : await getTokenBalanceBaseUnits(token.id, accountId);
-  return balance > BigInt(0);
+  return (await getLiveTokenBalance(token, accountId)) > BigInt(0);
+}
+
+/** Returns the wallet's current on-chain balance in the token's base units. */
+export async function getLiveTokenBalance(token: TokenRecord, accountId: string): Promise<bigint> {
+  return token.blockchain === "EVM"
+    ? await getEvmTokenBalance(token.id, accountId)
+    : await getTokenBalanceBaseUnits(token.id, accountId);
 }

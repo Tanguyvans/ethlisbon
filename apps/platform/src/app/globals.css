@@ -676,6 +676,22 @@ a:focus-visible {
   z-index: 1;
 }
 
+.token-header-primary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: clamp(2rem, 5vw, 5rem);
+  padding-right: clamp(0rem, 8vw, 7.5rem);
+}
+
+.token-header-identity {
+  min-width: 0;
+}
+
+.token-header-id {
+  overflow-wrap: anywhere;
+}
+
 .token-header-symbol {
   display: inline-flex;
   min-width: 2.35rem;
@@ -690,6 +706,66 @@ a:focus-visible {
   font-weight: 700;
   color: #245b49;
   background: #e8f4ec;
+}
+
+.token-balance {
+  min-width: 12rem;
+  border-left: 1px solid #dbe3dd;
+  padding: 0.2rem 0 0.2rem clamp(1.25rem, 2.5vw, 2.25rem);
+  text-align: right;
+}
+
+.token-balance-label,
+.token-balance-account {
+  display: block;
+  font-family: var(--font-ledger-mono);
+}
+
+.token-balance-label {
+  margin-bottom: 0.18rem;
+  color: #617169;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.token-balance-value-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  white-space: nowrap;
+}
+
+.token-balance-value {
+  color: var(--foreground);
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 4vw, 3.45rem);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.055em;
+  line-height: 0.95;
+}
+
+.token-balance-value.is-error {
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+}
+
+.token-balance-symbol {
+  color: #346454;
+  font-family: var(--font-ledger-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.token-balance-account {
+  margin-top: 0.36rem;
+  color: #7b8982;
+  font-size: 0.57rem;
+  letter-spacing: 0.025em;
 }
 
 .rwa-card:hover .rwa-card-action {
@@ -984,6 +1060,25 @@ a:focus-visible {
 }
 
 @media (max-width: 900px) {
+  .token-header-primary {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+    padding-right: 0;
+  }
+
+  .token-balance {
+    width: fit-content;
+    min-width: 10rem;
+    border-top: 1px solid #dbe3dd;
+    border-left: 0;
+    padding: 1rem 0 0;
+    text-align: left;
+  }
+
+  .token-balance-value-row {
+    justify-content: flex-start;
+  }
+
   .rwa-hero {
     grid-template-columns: 1fr;
     align-items: start;
