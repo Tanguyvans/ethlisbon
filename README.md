@@ -1,68 +1,59 @@
-# ethlisbon — Agent-Operated Hedera RWA Marketplace
+<p align="center">
+  <img src="brand/banner-16x9.png" alt="ethlisbon banner" width="100%" />
+</p>
 
-Built for the **ETHGlobal Lisbon 2026** Hedera track ("Tokenization on Hedera" +
-"No Solidity Allowed"). A single Railway container runs [Hermes Agent](https://github.com/NousResearch/hermes-agent)
-(by Nous Research) as a private operator console alongside a public Next.js
-storefront that issues and manages real-world-asset tokens on **Hedera Token
-Service (HTS)** — no smart contracts, only native Hedera consensus-enforced
-compliance (KYC, freeze, wipe, pause). Access can additionally be gated by
-**World ID** (Selfie Check / Identity Check) before the operator grants those
-HTS permissions.
+# Hermes — Agent-Operated RWA Marketplace
 
-The operator talks to the Hermes agent to deploy tokens and run treasury
-actions (pause, wipe, whitelist, distribute); the general public only ever
-touches the storefront UI directly — browse, connect a Hedera wallet
-(HashPack, Kabila, …), and acquire tokens that already exist. There is no
-public "create token" button by design.
+Deploy this repo on Railway and get a ready-to-use, agent-operated platform
+for creating and distributing tokenized assets. Hermes launches tokens on
+Hedera or EVM, defines who may hold them, and manages their lifecycle in
+natural language — no manual blockchain tooling.
+
+Users browse a public marketplace, connect a wallet, request a token, and
+complete a World ID check. Hermes verifies the result and autonomously
+approves or rejects distribution. For EVM assets, The Graph supplies indexed
+transfer and holder data so the agent can monitor what it manages.
+
+Built for **ETHGlobal Lisbon 2026** (Hedera, World, The Graph tracks).
+
+## How it works
+
+A public Next.js storefront and a private Hermes admin console run together
+as a single Railway service — storefront, API, agent dashboard, and MCP
+servers all in one repo, deployable from one place.
+
+The admin describes a token and its eligibility rules to Hermes. A user
+connects a wallet, requests the token, and completes World ID verification.
+Raw proofs stay in the trusted Next.js backend; Hermes only ever sees a
+sanitized verification result, which it evaluates against the token policy
+before rejecting the request or executing the distribution.
+
+Hermes is connected to four MCP integrations:
+
+- **Hedera MCP** — deploys and operates tokens via native HTS, no Solidity.
+- **EVM MCP** — deploys ERC-20 tokens on Sepolia.
+- **World ID MCP** — triggers holder verification in the trusted backend.
+- **The Graph MCP** — queries a subgraph indexing EVM transfers, balances, and holders.
 
 ## Repository layout
 
 | Path | What it is |
 |---|---|
-| [`apps/platform/`](apps/platform/README.md) | Public Next.js 16 storefront and API. Owns wallets, Hedera operations, persistence, and trusted World ID verification. |
-| [`apps/agent/`](apps/agent/README.md) | Private Python operator console. Runs Hermes, the MCP adapters, and the public reverse proxy. Its Dockerfile builds the deployed image. |
+| [`apps/platform/`](apps/platform/README.md) | Public Next.js storefront and API — wallets, Hedera operations, persistence, trusted World ID verification. |
+| [`apps/agent/`](apps/agent/README.md) | Private Python operator console — Hermes, MCP adapters, and the reverse proxy. Its Dockerfile builds the deployed image. |
 | [`docs/`](docs/architecture.md) | Cross-application architecture and ownership boundaries. |
-| `railway.toml`, `.dockerignore` | Root deployment configuration; Railway builds `apps/agent/Dockerfile` using the whole repository as context. |
-
-## How it fits together
-
-One Railway container builds the tokenization app and Hermes together, then
-runs the Python admin server as the front door:
-
-```
-Railway Container
-├── Python Admin Server (Starlette + Uvicorn)   ← listens on $PORT
-│   ├── /, /tokens/*, /api/tokens/*, /_next/*  — public proxy to the storefront (no auth)
-│   ├── /health                                — healthcheck (no auth)
-│   ├── /setup/api/*                           — config/status/logs/gateway/pairing (cookie auth)
-│   ├── /hermes                                — Hermes dashboard entry point (cookie auth)
-│   └── /*                                      — authenticated proxy to the Hermes dashboard
-├── Next.js Tokenization Platform  — loopback subprocess, port 3000, owns the root domain
-├── World ID MCP                    — proof verification adapter used by Hermes
-├── Hermes dashboard                — loopback subprocess, port 9119
-└── Hermes gateway                  — managed async subprocess (the agent itself)
-```
-
-The storefront (public, no login) owns the root URL. The Hermes admin
-dashboard — the agent's own UI plus the operator setup flow — lives under
-`/hermes`, protected by cookie auth. Persistent state (Hermes config,
-tokenization SQLite DB) lives on a Railway volume mounted at `/data`.
+| `railway.toml`, `.dockerignore` | Root deploy config — Railway builds `apps/agent/Dockerfile` with the whole repo as context. |
 
 ## Tech stack
 
-- **Admin server:** Python 3.12, Starlette, Uvicorn, `httpx`, `websockets`
-- **Storefront:** Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4
-- **Hedera:** `@hiero-ledger/sdk`, `@hashgraph/hedera-wallet-connect` (WalletConnect), `better-sqlite3`
-- **Identity:** `@worldcoin/idkit` (World ID Selfie Check / Identity Check)
-- **Agent:** [Hermes Agent](https://github.com/NousResearch/hermes-agent) by Nous Research
-- **Packaging/deploy:** multi-stage Docker build, Railway
+TypeScript, React, Next.js, SQLite, WalletConnect, Python, Starlette — plus
+`@hiero-ledger/sdk` for Hedera and `@worldcoin/idkit` for World ID.
 
 ## Running it
 
-**Deploy to Railway:** keep the service Root Directory at `/` — `railway.toml`
-builds `apps/agent/Dockerfile` with this whole repo as build context (it needs
-both production applications). See [`apps/agent/README.md`](apps/agent/README.md) for
-the full deploy checklist and environment variables.
+**Deploy to Railway:** keep the service Root Directory at `/`. See
+[`apps/agent/README.md`](apps/agent/README.md) for the full deploy checklist
+and environment variables.
 
 **Run the full container locally:**
 
@@ -76,10 +67,10 @@ docker run --rm -it -p 8080:8080 \
   -v hermes-data:/data hermes-agent
 ```
 
-Open `http://localhost:8080` for the public storefront; the Hermes dashboard
-is at `http://localhost:8080/hermes` (`admin` / your password).
+Storefront: `http://localhost:8080`. Hermes dashboard:
+`http://localhost:8080/hermes` (`admin` / your password).
 
-**Run the platform standalone** (e.g. for frontend-only iteration):
+**Run the platform standalone:**
 
 ```bash
 cd apps/platform
@@ -87,20 +78,15 @@ cp .env.example .env
 npm install && npm run dev
 ```
 
-## Sub-projects
+## More
 
-Each folder owns its own detailed README — env vars, architecture, and
-known limitations live there, not here:
-
-- **[`apps/agent/README.md`](apps/agent/README.md)** — admin dashboard features, environment variables, supported LLM providers/channels/tools, updating Hermes.
-- **[`apps/platform/README.md`](apps/platform/README.md)** — HTS architecture, compliance controls, wallet flow, World ID verification, and known limitations.
-- **[`docs/architecture.md`](docs/architecture.md)** — which runtime owns each responsibility and how the single Railway image is assembled.
-- **[`docs/hedera.md`](docs/hedera.md)** — Hedera usage, implementation files, and tracks addressed.
-- **[`docs/world.md`](docs/world.md)** — World usage and implementation files.
-- **[`docs/the_graph.md`](docs/the_graph.md)** — The Graph usage, implementation files, and tracks addressed.
-- **[`feedbacks/`](feedbacks/)** — per-sponsor integration feedback (World, The Graph), kept separate from the usage docs above.
+- [`apps/agent/README.md`](apps/agent/README.md) — admin dashboard, env vars, LLM providers/channels/tools, updating Hermes.
+- [`apps/platform/README.md`](apps/platform/README.md) — HTS architecture, compliance controls, wallet flow, World ID, known limitations.
+- [`docs/architecture.md`](docs/architecture.md) — runtime ownership and image assembly.
+- [`docs/hedera.md`](docs/hedera.md) · [`docs/world.md`](docs/world.md) · [`docs/the_graph.md`](docs/the_graph.md) — per-sponsor usage and implementation notes.
+- [`feedbacks/`](feedbacks/) — per-sponsor integration feedback.
 
 ## Credits
 
 - [Hermes Agent](https://github.com/NousResearch/hermes-agent) by [Nous Research](https://nousresearch.com/)
-- Built for [ETHGlobal Lisbon 2026](https://ethglobal.com/) — Hedera track
+- Built for [ETHGlobal Lisbon 2026](https://ethglobal.com/)
