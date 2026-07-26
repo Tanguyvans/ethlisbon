@@ -3,18 +3,22 @@
 
 :root {
   color-scheme: light;
-  --background: #f2f4f1;
-  --foreground: #17201b;
-  --surface: #fbfcfa;
+  --background: #f6f7f2;
+  --foreground: #0b352d;
+  --surface: #fbfcf8;
   --surface-strong: #ffffff;
-  --muted: #67706a;
-  --line: #d7ddd8;
-  --line-strong: #bdc6bf;
-  --green: #176447;
-  --green-soft: #e5f0ea;
-  --violet: #6e55a5;
-  --font-display: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-product-sans: "Avenir Next", Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
+  --muted: #65746d;
+  --line: #dfe5dc;
+  --line-strong: #c5d0c7;
+  --green: #0e5a48;
+  --green-deep: #083e34;
+  --green-soft: #e2f1e8;
+  --mint: #a8dfc3;
+  --lemon: #f4da4d;
+  --lemon-soft: #fff7c8;
+  --violet: #8373bd;
+  --font-display: "Avenir Next", Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-product-sans: Inter, "Avenir Next", Avenir, "Segoe UI", Helvetica, Arial, sans-serif;
   --font-ledger-mono: "SFMono-Regular", "Cascadia Code", Consolas, "Liberation Mono", monospace;
 }
 
@@ -35,6 +39,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-product-sans);
+  text-rendering: optimizeLegibility;
 }
 
 button,
@@ -58,9 +63,9 @@ a:focus-visible {
   position: sticky;
   z-index: 20;
   top: 0;
-  border-bottom: 1px solid rgb(189 198 191 / 0.7);
-  background: rgb(248 249 247 / 0.92);
-  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgb(197 208 199 / 0.72);
+  background: rgb(250 251 247 / 0.9);
+  backdrop-filter: blur(18px);
 }
 
 .app-header-inner,
@@ -74,7 +79,7 @@ a:focus-visible {
 
 .app-header-inner {
   display: flex;
-  min-height: 4.7rem;
+  min-height: 4.9rem;
   align-items: center;
   justify-content: space-between;
   gap: 2rem;
@@ -83,33 +88,18 @@ a:focus-visible {
 .app-brand {
   display: inline-flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.75rem;
   min-width: 0;
 }
 
 .app-brand-mark {
-  display: flex;
-  width: 2rem;
-  height: 2rem;
-  flex: 0 0 auto;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.22rem;
-  border: 1px solid #27342d;
-  border-radius: 0.42rem;
-  background: #1c2821;
-}
-
-.app-brand-mark span {
   display: block;
-  height: 1px;
-  margin-inline: 0.48rem;
-  background: #dce5df;
-}
-
-.app-brand-mark span:nth-child(2) {
-  width: 0.72rem;
-  background: #9b85c4;
+  width: 2.55rem;
+  height: 2.55rem;
+  flex: 0 0 auto;
+  border: 1px solid #d8dfd7;
+  border-radius: 0.78rem;
+  object-fit: cover;
 }
 
 .app-brand-copy {
@@ -120,9 +110,9 @@ a:focus-visible {
 
 .app-brand-name {
   font-family: var(--font-display);
-  font-size: 1rem;
-  font-weight: 650;
-  letter-spacing: -0.035em;
+  font-size: 1.08rem;
+  font-weight: 720;
+  letter-spacing: -0.045em;
   white-space: nowrap;
 }
 
@@ -135,8 +125,8 @@ a:focus-visible {
   align-items: center;
   gap: 0.38rem;
   font-family: var(--font-ledger-mono);
-  font-size: 0.55rem;
-  letter-spacing: 0.1em;
+  font-size: 0.52rem;
+  letter-spacing: 0.115em;
   text-transform: uppercase;
   color: var(--muted);
 }
@@ -146,7 +136,7 @@ a:focus-visible {
   width: 0.38rem;
   height: 0.38rem;
   border-radius: 50%;
-  background: #23855f;
+  background: #2a9a6d;
 }
 
 .app-actions {
@@ -162,7 +152,7 @@ a:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border-radius: 0.48rem;
+  border-radius: 0.72rem;
   padding: 0.62rem 0.85rem;
   font-size: 0.76rem;
   font-weight: 620;
@@ -172,7 +162,7 @@ a:focus-visible {
 
 .app-admin-button {
   border: 1px solid var(--line-strong);
-  color: #344039;
+  color: #36534a;
   background: var(--surface-strong);
 }
 
@@ -182,8 +172,8 @@ a:focus-visible {
 }
 
 .app-admin-button:hover {
-  border-color: #8e9991;
-  background: #eef1ee;
+  border-color: #8ea89a;
+  background: #f1f6f2;
 }
 
 .app-wallet-control {
@@ -195,13 +185,13 @@ a:focus-visible {
 }
 
 .app-wallet-button {
-  border: 1px solid #1c2821;
+  border: 1px solid var(--green-deep);
   color: white;
-  background: #1c2821;
+  background: var(--green-deep);
 }
 
 .app-wallet-button:hover:not(:disabled) {
-  background: #304238;
+  background: #12604d;
 }
 
 .app-wallet-button:disabled {
@@ -211,7 +201,8 @@ a:focus-visible {
 
 .app-wallet-button.is-connected {
   font-family: var(--font-ledger-mono);
-  color: #26352d;
+  border-color: #b7cabe;
+  color: #1f4a3e;
   background: var(--surface-strong);
 }
 
@@ -231,7 +222,7 @@ a:focus-visible {
 
 .app-main {
   flex: 1;
-  padding-top: 2rem;
+  padding-top: 1.5rem;
   padding-bottom: 5rem;
 }
 
@@ -246,7 +237,24 @@ a:focus-visible {
   font-size: 0.56rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #778079;
+  color: #738078;
+}
+
+.mint-empty-state {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  border: 1px dashed #cbd8cc;
+  border-radius: 1.25rem;
+  padding: 3.5rem 1.5rem;
+  text-align: center;
+  background: rgb(255 255 255 / 0.68);
+}
+
+.mint-empty-state img {
+  margin-bottom: 1rem;
+  border: 1px solid #dfe5dc;
+  border-radius: 1rem;
 }
 
 .rwa-hero {
@@ -436,8 +444,8 @@ a:focus-visible {
 .rwa-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  grid-auto-rows: 28rem;
-  gap: 0.8rem;
+  grid-auto-rows: 26rem;
+  gap: 0.9rem;
 }
 
 .rwa-card {
@@ -446,8 +454,8 @@ a:focus-visible {
   height: 100%;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 0.65rem;
-  padding: 1.3rem;
+  border-radius: 1.05rem;
+  padding: 1.35rem;
   background: var(--surface-strong);
   box-shadow: 0 1px 1px rgb(23 32 27 / 0.025);
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
@@ -455,8 +463,9 @@ a:focus-visible {
 
 .rwa-card::before {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 2px;
+  inset: 0 0 auto;
+  width: auto;
+  height: 3px;
   background: transparent;
   content: "";
   transition: background 180ms ease;
@@ -464,8 +473,8 @@ a:focus-visible {
 
 .rwa-card:hover {
   transform: translateY(-2px);
-  border-color: #aeb8b0;
-  box-shadow: 0 14px 34px rgb(23 32 27 / 0.07);
+  border-color: #b1c2b7;
+  box-shadow: 0 16px 36px rgb(8 62 52 / 0.075);
 }
 
 .rwa-card:hover::before {
@@ -478,7 +487,7 @@ a:focus-visible {
   height: 2.65rem;
   place-items: center;
   border: 1px solid currentColor;
-  border-radius: 0.42rem;
+  border-radius: 0.68rem;
   padding-inline: 0.45rem;
   font-family: var(--font-ledger-mono);
   font-size: 0.62rem;
@@ -487,7 +496,7 @@ a:focus-visible {
 }
 
 .rwa-symbol.is-sage { color: #32694f; background: #edf4f0; }
-.rwa-symbol.is-bronze { color: #7a5b35; background: #f5f0e8; }
+.rwa-symbol.is-lemon { color: #695a16; background: #fff7c8; }
 .rwa-symbol.is-slate { color: #4f6470; background: #eef2f4; }
 .rwa-symbol.is-ink { color: #3f4943; background: #edf0ee; }
 .rwa-symbol.is-violet { color: #665287; background: #f1eef6; }
@@ -516,7 +525,7 @@ a:focus-visible {
 }
 
 .rwa-asset-chip.is-sage { color: #32694f; }
-.rwa-asset-chip.is-bronze { color: #7a5b35; }
+.rwa-asset-chip.is-lemon { color: #79661a; }
 .rwa-asset-chip.is-slate { color: #4f6470; }
 .rwa-asset-chip.is-ink { color: #3f4943; }
 .rwa-asset-chip.is-violet { color: #665287; }
@@ -583,7 +592,7 @@ a:focus-visible {
   gap: 0.35rem;
   padding: 0.22rem 0.42rem;
   border: 1px solid #dbe0dc;
-  border-radius: 0.32rem;
+  border-radius: 0.48rem;
   color: #5f6962;
   background: #f7f8f6;
 }
@@ -618,6 +627,69 @@ a:focus-visible {
   font-size: 0.72rem;
   font-weight: 650;
   transition: color 160ms ease;
+}
+
+.token-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.token-back-link {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-ledger-mono);
+  font-size: 0.58rem;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #60736a;
+}
+
+.token-back-link:hover {
+  color: var(--green);
+}
+
+.token-header-card {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  background: #fbfcf8;
+}
+
+.token-header-card::after {
+  position: absolute;
+  top: -4rem;
+  right: -3rem;
+  width: 11rem;
+  height: 11rem;
+  border-radius: 50%;
+  background: var(--lemon-soft);
+  content: "";
+  pointer-events: none;
+}
+
+.token-header-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.token-header-symbol {
+  display: inline-flex;
+  min-width: 2.35rem;
+  min-height: 2.35rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c6dacd;
+  border-radius: 0.7rem;
+  padding-inline: 0.5rem;
+  font-family: var(--font-ledger-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #245b49;
+  background: #e8f4ec;
 }
 
 .rwa-card:hover .rwa-card-action {
@@ -951,8 +1023,9 @@ a:focus-visible {
   }
 
   .app-brand-mark {
-    width: 1.8rem;
-    height: 1.8rem;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.62rem;
   }
 
   .app-brand-name {
@@ -985,6 +1058,12 @@ a:focus-visible {
   .app-admin-button svg {
     width: 0.88rem;
     height: 0.88rem;
+  }
+
+  .app-admin-button {
+    width: 2.3rem;
+    padding-inline: 0;
+    font-size: 0;
   }
 
   .app-main {
@@ -1029,7 +1108,7 @@ a:focus-visible {
   }
 
   .rwa-grid {
-    grid-auto-rows: 27rem;
+    grid-auto-rows: 26rem;
   }
 
   .rwa-card {
@@ -1062,6 +1141,12 @@ a:focus-visible {
   .rwa-access-result {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 400px) {
+  .app-brand-copy {
+    display: none;
   }
 }
 

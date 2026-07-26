@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { TokenRecord } from "@/types";
 
@@ -7,8 +8,8 @@ const ACCENTS = [
     mark: "is-sage",
   },
   {
-    chip: "is-bronze",
-    mark: "is-bronze",
+    chip: "is-lemon",
+    mark: "is-lemon",
   },
   {
     chip: "is-slate",
@@ -76,20 +77,27 @@ export default function DeployedTokenCatalog({ tokens }: { tokens: TokenRecord[]
     <>
       <div className="rwa-catalog-head is-page-start" id="instruments">
         <div>
-          <p className="rwa-kicker">Asset registry</p>
-          <h2>Deployed instruments</h2>
+          <p className="rwa-kicker">Live registry</p>
+          <h2>Available tokens</h2>
         </div>
         <span className="rwa-no-payment">
           <span className="proof-live-dot" aria-hidden="true" />
-          Deployment synced
+          Synced by Hermes
         </span>
       </div>
 
       {tokens.length === 0 ? (
-        <div className="rounded-[1.35rem] border border-zinc-300 bg-white/80 px-6 py-16 text-center shadow-sm">
+        <div className="mint-empty-state">
+          <Image
+            src="/brand/logo-512.png"
+            alt=""
+            width={72}
+            height={72}
+            aria-hidden="true"
+          />
           <h3 className="text-xl font-semibold">No token deployed yet</h3>
           <p className="mt-2 text-sm text-zinc-500">
-            Once the agent deploys a token, its card will appear here.
+            Ask Hermes to deploy one. It will appear here when the transaction is confirmed.
           </p>
         </div>
       ) : (

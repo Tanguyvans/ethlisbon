@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import "./globals.css";
 import { WalletProvider } from "@/hooks/useWalletConnect";
@@ -6,9 +7,19 @@ import { EvmWalletProvider } from "@/hooks/useEvmWallet";
 import WalletConnectButton from "@/components/WalletConnectButton";
 
 export const metadata: Metadata = {
-  title: "RWA Access Desk · Hedera + Sepolia",
+  metadataBase: new URL(process.env.TOKENIZATION_APP_URL ?? "http://localhost:3000"),
+  title: "Mint & Chill · Agent-operated token marketplace",
   description:
-    "Explore tokenized real-world assets and prove private eligibility conditions with World ID.",
+    "Discover tokenized assets, prove eligibility, and let Hermes handle distribution across Hedera and Sepolia.",
+  icons: {
+    icon: "/brand/logo-512.png",
+    apple: "/brand/logo-512.png",
+  },
+  openGraph: {
+    title: "Mint & Chill",
+    description: "Agent-operated token deployment, eligibility, and distribution.",
+    images: ["/brand/banner-16x9.png"],
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -19,16 +30,19 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <EvmWalletProvider>
           <header className="app-header">
             <div className="app-header-inner">
-              <Link href="/" className="app-brand" aria-label="RWA Access Desk home">
-                <span className="app-brand-mark" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </span>
+              <Link href="/" className="app-brand" aria-label="Mint & Chill home">
+                <Image
+                  src="/brand/logo-512.png"
+                  alt=""
+                  width={48}
+                  height={48}
+                  className="app-brand-mark"
+                  priority
+                />
                 <span className="app-brand-copy">
                   <span className="app-brand-name">
-                    <span className="app-brand-name-long">RWA Access Desk</span>
-                    <span className="app-brand-name-short">RWA Desk</span>
+                    <span className="app-brand-name-long">mint &amp; chill</span>
+                    <span className="app-brand-name-short">m&amp;c</span>
                   </span>
                   <span className="app-brand-network">
                     <span className="app-network-dot" aria-hidden="true" />
@@ -41,6 +55,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 <a
                   href="/hermes?force=1"
                   className="app-admin-button"
+                  aria-label="Open Hermes admin"
                 >
                   <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
                     <path
@@ -65,8 +80,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </header>
           <main className="app-main">{children}</main>
           <footer className="app-footer">
-            <span>RWA Access Desk</span>
-            <span>Hedera Token Service · Ethereum Sepolia</span>
+            <span>mint &amp; chill</span>
+            <span>Agent-operated · Hedera + Sepolia</span>
           </footer>
           </EvmWalletProvider>
         </WalletProvider>

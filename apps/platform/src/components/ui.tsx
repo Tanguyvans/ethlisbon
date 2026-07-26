@@ -4,7 +4,7 @@ import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 sm:p-5 ${className}`}>
+    <div className={`rounded-[1.15rem] border border-[#dfe5dc] bg-white p-4 shadow-[0_1px_2px_rgba(8,55,45,0.03)] sm:p-5 ${className}`}>
       {children}
     </div>
   );
@@ -29,7 +29,7 @@ export function Field({
 }
 
 const inputClass =
-  "rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-400 disabled:opacity-50 disabled:cursor-not-allowed";
+  "rounded-lg border border-[#cbd5cc] bg-white px-3 py-2 text-sm text-[#12372f] focus:outline-none focus:ring-2 focus:ring-[#0e5a48]/35 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${inputClass} ${props.className ?? ""}`} />;
@@ -76,15 +76,15 @@ export function Button({
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" | "ghost" }) {
   const variants: Record<string, string> = {
-    primary: "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 hover:opacity-90",
-    secondary: "border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800",
+    primary: "bg-[#0b4438] text-white hover:bg-[#12604d]",
+    secondary: "border border-[#cbd5cc] bg-white text-[#173d34] hover:border-[#8fa99b] hover:bg-[#f2f7f3]",
     danger: "bg-red-600 text-white hover:bg-red-700",
-    ghost: "hover:bg-zinc-100 dark:hover:bg-zinc-800",
+    ghost: "text-[#173d34] hover:bg-[#edf4ef]",
   };
   return (
     <button
       {...props}
-      className={`text-sm font-medium rounded-lg px-3 py-2 transition disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]} ${className}`}
+      className={`rounded-lg px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}
     >
       {children}
     </button>
@@ -93,11 +93,11 @@ export function Button({
 
 export function Badge({ children, tone = "zinc" }: { children: ReactNode; tone?: "zinc" | "violet" | "amber" | "red" | "emerald" }) {
   const tones: Record<string, string> = {
-    zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
-    violet: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
-    amber: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+    zinc: "bg-[#edf1ed] text-[#53655d]",
+    violet: "bg-[#eeeaf8] text-[#6f5fa7]",
+    amber: "bg-[#fff5bf] text-[#6a5913]",
     red: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
-    emerald: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+    emerald: "bg-[#e1f3e8] text-[#176447]",
   };
   return <span className={`text-[10px] uppercase tracking-wide rounded-full px-2 py-1 ${tones[tone]}`}>{children}</span>;
 }
