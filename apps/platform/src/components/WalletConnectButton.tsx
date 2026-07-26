@@ -14,24 +14,24 @@ export default function WalletConnectButton() {
       <button
         onClick={disconnect}
         title="Disconnect wallet"
-        className="text-sm font-mono rounded-lg border border-zinc-300 dark:border-zinc-700 px-2 sm:px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition flex items-center justify-center gap-2 whitespace-nowrap"
+        className="app-wallet-button is-connected"
       >
-        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+        <span className="app-wallet-dot" aria-hidden="true" />
         {shorten(accountId)}
       </button>
     );
   }
 
   return (
-    <div className="flex flex-col items-stretch sm:items-end gap-1">
+    <div className="app-wallet-control">
       <button
         onClick={connect}
         disabled={connecting}
-        className="text-sm font-medium rounded-lg border border-zinc-300 dark:border-zinc-700 px-2 sm:px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition disabled:opacity-50 whitespace-nowrap"
+        className="app-wallet-button"
       >
         {connecting ? "Connecting…" : "Connect wallet"}
       </button>
-      {error && <span className="text-xs text-red-600 max-w-[220px] text-right">{error}</span>}
+      {error && <span className="app-wallet-error">{error}</span>}
     </div>
   );
 }

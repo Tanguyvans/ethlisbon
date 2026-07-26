@@ -13,32 +13,58 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col bg-[#f5f6f2] text-zinc-950">
+      <body className="app-shell">
         <WalletProvider>
-          <header className="border-b border-zinc-200/80 bg-[#f9faf7]/90 backdrop-blur sticky top-0 z-20">
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-              <Link href="/" className="flex items-baseline gap-2 shrink-0">
-                <span className="text-lg font-semibold tracking-[-0.035em]">RWA Access Desk</span>
-                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-500 hidden sm:inline">
-                  Hedera testnet
+          <header className="app-header">
+            <div className="app-header-inner">
+              <Link href="/" className="app-brand" aria-label="RWA Access Desk home">
+                <span className="app-brand-mark" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+                <span className="app-brand-copy">
+                  <span className="app-brand-name">
+                    <span className="app-brand-name-long">RWA Access Desk</span>
+                    <span className="app-brand-name-short">RWA Desk</span>
+                  </span>
+                  <span className="app-brand-network">
+                    <span className="app-network-dot" aria-hidden="true" />
+                    Hedera testnet
+                  </span>
                 </span>
               </Link>
-              <div className="grid grid-cols-2 items-start gap-2 sm:flex sm:items-center sm:gap-3">
+              <nav className="app-actions" aria-label="Account actions">
                 {/* This link intentionally exits the tokenization app for the parent Hermes admin dashboard. */}
                 <a
                   href="/hermes?force=1"
-                  className="text-sm font-medium rounded-lg border border-violet-300/70 px-2 sm:px-3 py-2 text-violet-700 hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 transition flex items-center justify-center gap-2 whitespace-nowrap"
+                  className="app-admin-button"
                 >
-                  <span className="h-1.5 w-1.5 rounded-full bg-violet-500" aria-hidden="true" />
-                  Hermes
+                  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path
+                      d="M10 2.7 16 5v4.3c0 3.8-2.5 6.6-6 8-3.5-1.4-6-4.2-6-8V5l6-2.3Z"
+                      stroke="currentColor"
+                      strokeWidth="1.45"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M7.8 9.8 9.3 11l3-3.2"
+                      stroke="currentColor"
+                      strokeWidth="1.45"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Admin
                 </a>
                 <WalletConnectButton />
-              </div>
+              </nav>
             </div>
           </header>
-          <main className="flex-1 mx-auto w-full max-w-7xl px-4 sm:px-6 py-8 sm:py-12">{children}</main>
-          <footer className="border-t border-zinc-200/80 py-6 text-center text-xs text-zinc-500">
-            Built on Hedera Token Service · Eligibility demo — no payment or investment transaction
+          <main className="app-main">{children}</main>
+          <footer className="app-footer">
+            <span>RWA Access Desk</span>
+            <span>Hedera Token Service · Test environment</span>
           </footer>
         </WalletProvider>
       </body>
