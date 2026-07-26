@@ -335,6 +335,14 @@ PROVIDER_KEYS = [k for k, _, c, _ in ENV_VARS if c == "provider"]
 PR_SAFE_ENV_CATEGORIES = {"model", "provider", "bedrock", "azure", "custom"}
 PR_SAFE_ENV_KEYS = {k for k, _, c, _ in ENV_VARS if c in PR_SAFE_ENV_CATEGORIES}
 
+# Baseline OS-level env vars any subprocess needs to actually function — PATH
+# so `execvp("hermes", ...)` can even locate the binary (build_pr_env() builds
+# its dict from scratch rather than inheriting os.environ, so without this the
+# spawn fails outright with a bare FileNotFoundError, no filename shown, easy
+# to mistake for a missing profile/config problem), plus a few other locale/
+# home basics. None of these are secrets.
+PR_BASE_ENV_KEYS = ("PATH", "HOME", "LANG", "LC_ALL", "TERM", "TMPDIR", "TZ")
+
 WORLD_ID_NATIONALITIES = {
     "ARG", "AUS", "CHL", "COL", "CRI", "GBR", "HRV", "ITA",
     "JPN", "KOR", "MEX", "MYS", "PAN", "PRT", "SGP", "USA",
@@ -948,21 +956,27 @@ def build_pr_env() -> dict[str, str]:
     env even though no *_write MCP is ever registered for it — bad hygiene at
     best, a real exposure if a future edit ever mis-registers one.
 
-    Instead: start from a hard allowlist (PR_SAFE_ENV_KEYS — LLM model/provider
-    credentials only, the one thing worth sharing with the operator profile so
-    the pr agent uses the same configured model) pulled from BOTH the
-    operator's .env and os.environ (a provider key may live in either
-    depending on whether it was set via the setup wizard or a Railway var),
-    then layer on this profile's own identity/api_server settings.
+    Instead: start from PR_BASE_ENV_KEYS (PATH and other non-secret OS
+    plumbing a subprocess needs to run at all) plus a hard allowlist
+    (PR_SAFE_ENV_KEYS — LLM model/provider credentials only, the one thing
+    worth sharing with the operator profile so the pr agent uses the same
+    configured model) pulled from BOTH the operator's .env and os.environ (a
+    provider key may live in either depending on whether it was set via the
+    setup wizard or a Railway var), then layer on this profile's own
+    identity/api_server settings.
     """
     operator_env = read_env(ENV_FILE)
-    env: dict[str, str] = {}
+    env: dict[str, str] = {k: os.environ[k] for k in PR_BASE_ENV_KEYS if k in os.environ}
     for key in PR_SAFE_ENV_KEYS:
         value = operator_env.get(key) or os.environ.get(key, "")
         if value:
             env[key] = value
 
-    env["HERMES_HOME"] = HERMES_HOME
+    # Point this subprocess's OWN home at the profile directory directly,
+    # rather than the root HERMES_HOME + a `-p pr` CLI flag — confirmed live
+    # that `-p pr` did not actually scope `hermes gateway run` to this
+    # profile's home (see Gateway.start()'s comment on the `args` list).
+    env["HERMES_HOME"] = str(PR_HOME)
     env["API_SERVER_ENABLED"] = "true"
     env["API_SERVER_HOST"] = PR_API_SERVER_HOST
     env["API_SERVER_PORT"] = str(PR_API_SERVER_PORT)
@@ -1566,23 +1580,27 @@ class Gateway:
 
     Parametrized (rather than hardcoded to the operator/default profile) so the
     same class also supervises the locked-down `pr` profile's gateway — see
-    `gw_pr` below. Everything profile-specific (the `-p <name>` CLI flag, the
-    session cwd for AGENTS.md discovery, the subprocess env, the config.yaml
-    writer, and where that profile's gateway.pid lock lives) is passed in;
-    behavior for the default `gw = Gateway()` instance is unchanged.
+    `gw_pr` below. Everything profile-specific (the session cwd for AGENTS.md
+    discovery, the subprocess env — which is what actually selects the
+    profile, via HERMES_HOME, see build_pr_env() — the config.yaml writer, and
+    where that profile's gateway.pid lock lives) is passed in; behavior for
+    the default `gw = Gateway()` instance is unchanged. Deliberately NOT a
+    `-p <name>` CLI flag: confirmed live that `hermes -p pr gateway run
+    --replace` did not scope the process to that profile's home (its boot log
+    showed the ROOT session storage path) — Hermes' own `<alias> chat`
+    wrapper scripts select a profile purely via HERMES_HOME, which is the
+    mechanism used here instead.
     """
 
     def __init__(
         self,
         *,
-        profile: str | None = None,
         cwd: str = AGENT_WORKDIR,
         env_builder: Callable[[], dict[str, str]] = build_hermes_env,
         config_writer: Callable[[], None] | None = None,
         pid_home: str = HERMES_HOME,
         log_prefix: str = "gateway",
     ):
-        self.profile = profile
         self.cwd = cwd
         self.env_builder = env_builder
         self.config_writer = config_writer or (lambda: write_config_yaml(read_env(ENV_FILE)))
@@ -1631,9 +1649,18 @@ class Gateway:
             # die. --replace is hermes' own blessed fix for exactly this
             # class of stuck-lock — it force-kills whatever holds the lock
             # (graceful SIGTERM, escalating to SIGKILL) before claiming it.
+            #
+            # Profile selection is via HERMES_HOME in `env` (set by
+            # env_builder), NOT a `-p <profile>` CLI flag: confirmed live that
+            # `hermes -p pr gateway run --replace` did not actually scope this
+            # process to the pr profile's home (its own boot log showed
+            # "Session storage: /data/.hermes/sessions" — the ROOT path, not
+            # profiles/pr/sessions) — the two gateways ended up fighting over
+            # the same underlying lock via repeated --replace takeovers. This
+            # is exactly how the `<alias> chat` wrapper scripts work per
+            # Hermes' own docs: they set HERMES_HOME=~/.hermes/profiles/<name>
+            # and invoke plain `hermes`, no -p flag involved.
             args = ["gateway", "run", "--replace"]
-            if self.profile:
-                args = ["-p", self.profile, *args]
             self.proc = await asyncio.create_subprocess_exec(
                 "hermes", *args,
                 # cwd is the session working dir the TUI/CLI uses for AGENTS.md
@@ -1781,7 +1808,6 @@ def _write_pr_config() -> None:
 
 
 gw_pr = Gateway(
-    profile=PR_PROFILE,
     cwd=PR_WORKDIR,
     env_builder=build_pr_env,
     config_writer=_write_pr_config,
