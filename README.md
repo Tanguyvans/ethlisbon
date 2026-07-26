@@ -95,9 +95,10 @@ known limitations live there, not here:
 - **[`apps/agent/README.md`](apps/agent/README.md)** — admin dashboard features, environment variables, supported LLM providers/channels/tools, updating Hermes.
 - **[`apps/platform/README.md`](apps/platform/README.md)** — HTS architecture, compliance controls, wallet flow, World ID verification, and known limitations.
 - **[`docs/architecture.md`](docs/architecture.md)** — which runtime owns each responsibility and how the single Railway image is assembled.
-- **[`docs/hedera.md`](docs/hedera.md)** — Hedera usage, implementation files, tracks, and integration feedback.
-- **[`docs/world.md`](docs/world.md)** — World usage, implementation files, and Selfie/Identity Check feedback.
-- **[`docs/thegraph.md`](docs/thegraph.md)** — intentionally empty until The Graph is integrated.
+- **[`docs/hedera.md`](docs/hedera.md)** — Hedera usage, implementation files, and tracks addressed.
+- **[`docs/world.md`](docs/world.md)** — World usage and implementation files.
+- **[`docs/the_graph.md`](docs/the_graph.md)** — The Graph usage, implementation files, and tracks addressed.
+- **[`feedbacks/`](feedbacks/)** — per-sponsor integration feedback (World, The Graph), kept separate from the usage docs above.
 
 ## Credits
 
