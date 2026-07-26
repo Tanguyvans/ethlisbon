@@ -39,7 +39,7 @@ export default function TokenWorkspace({
         requests={requests}
         worldConfig={worldConfig}
       />
-      <TokenChat token={token} holders={holders} />
+      <TokenChat token={token} />
       <EventLog events={events} />
     </div>
   );

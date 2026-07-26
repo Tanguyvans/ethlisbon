@@ -2,22 +2,56 @@ import { NextResponse } from "next/server";
 import { getAddress } from "ethers";
 import { z } from "zod";
 import { ApiError, handleRoute, readJson, requireToken } from "@/lib/api/helpers";
-import { getHolder } from "@/lib/db/repo";
+import { hasPositiveBalance } from "@/lib/chat/eligibility";
 import { checkChatRateLimit } from "@/lib/chat/rateLimit";
 import type { TokenRecord } from "@/types";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Holder-facing "ask about this token" chat. Gated to connected wallets that
- * already hold the token (same ownership check HolderPanel.tsx uses), then
- * proxied to the locked-down `pr` Hermes profile's OpenAI-compatible API
- * server (see apps/agent/server.py's PR_* constants / gw_pr) — never to the
- * operator gateway. That profile only has the hedera_read/evm_read/
- * subgraph_read MCPs and no terminal/file tools, so there is no code path
- * from this chat to any mint/transfer/reclaim/pause/whitelist operation or to
- * any operator secret, regardless of what a message asks for.
+ * Holder-facing "ask about this token" chat. Gated to wallets that currently
+ * hold a positive on-chain balance of the token (GET below reports this for
+ * the UI's greyed-out state; POST re-checks it as the actual enforcement —
+ * never trust the client's rendering decision), then proxied to the
+ * locked-down `pr` Hermes profile's OpenAI-compatible API server (see
+ * apps/agent/server.py's PR_* constants / gw_pr) — never to the operator
+ * gateway. That profile only has the hedera_read/evm_read/subgraph_read MCPs
+ * and no terminal/file tools, so there is no code path from this chat to any
+ * mint/transfer/reclaim/pause/whitelist operation or to any operator secret,
+ * regardless of what a message asks for.
  */
+
+function normalizeAccountId(token: TokenRecord, accountId: string): string {
+  const isEvmAddress = accountId.startsWith("0x");
+  if ((token.blockchain === "EVM") !== isEvmAddress) {
+    throw new ApiError("Connect the wallet that matches this token's chain to chat.", 400);
+  }
+  return token.blockchain === "EVM" ? getAddress(accountId) : accountId;
+}
+
+/** UI-only check so the chat panel can render a greyed-out "hold this token
+ *  to unlock chat" state instead of just disappearing. Never the security
+ *  boundary — POST re-verifies independently. Defaults to ineligible on any
+ *  error (bad address, RPC hiccup) rather than failing the page. */
+export async function GET(req: Request, { params }: { params: Promise<{ tokenId: string }> }) {
+  return handleRoute(async () => {
+    const { tokenId } = await params;
+    const token = requireToken(tokenId);
+    const accountId = new URL(req.url).searchParams.get("accountId");
+
+    if (!accountId) return NextResponse.json({ eligible: false });
+
+    const eligible = await (async () => {
+      try {
+        return await hasPositiveBalance(token, normalizeAccountId(token, accountId));
+      } catch {
+        return false;
+      }
+    })();
+
+    return NextResponse.json({ eligible });
+  });
+}
 
 const chatMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -57,20 +91,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ tokenId
     const token = requireToken(tokenId);
 
     const { accountId, messages } = chatRequestSchema.parse(await readJson<unknown>(req));
+    const normalizedAccountId = normalizeAccountId(token, accountId);
 
-    const isEvmAddress = accountId.startsWith("0x");
-    if ((token.blockchain === "EVM") !== isEvmAddress) {
-      throw new ApiError("Connect the wallet that matches this token's chain to chat.", 400);
+    // Ownership gate: a live on-chain balance check, not just the local
+    // `holders` bookkeeping row (which only means "registered", not "still
+    // holds a positive balance right now"). The underlying data this chat
+    // surfaces is public on-chain/indexed data, so this is a product gate
+    // (chat is a holder perk), not a data-secrecy control — proportionate to
+    // what's actually being protected. A check failure (RPC/network) is
+    // reported as unavailable, not silently treated as ineligible.
+    let eligible: boolean;
+    try {
+      eligible = await hasPositiveBalance(token, normalizedAccountId);
+    } catch (err) {
+      console.error("chat eligibility check failed", err);
+      throw new ApiError("Could not verify your token balance right now — please try again.", 503);
     }
-    const normalizedAccountId = token.blockchain === "EVM" ? getAddress(accountId) : accountId;
-
-    // Ownership gate: same holder-row check HolderPanel.tsx's UI relies on.
-    // The underlying data this chat surfaces is public on-chain/indexed data,
-    // so this is a product gate (chat is a holder perk), not a data-secrecy
-    // control — proportionate to what's actually being protected.
-    const holder = getHolder(tokenId, normalizedAccountId);
-    if (!holder) {
-      throw new ApiError("Connect a wallet that holds this token to chat about it.", 403);
+    if (!eligible) {
+      throw new ApiError("Hold some of this token to chat about it.", 403);
     }
 
     if (!checkChatRateLimit(`${tokenId}:${normalizedAccountId}`)) {
