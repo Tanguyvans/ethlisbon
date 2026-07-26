@@ -801,6 +801,9 @@ def write_config_yaml(data: dict[str, str], *, reset_model: bool = False) -> Non
     # chat uses the same LLM the operator configured) but writes an entirely
     # separate mcp_servers/toolset story to its own profile directory.
     write_pr_config_yaml(dict(merged_model))
+    # Also refresh its on-disk .env — see write_pr_env_file()'s docstring for
+    # why this can't just live in build_pr_env()'s in-memory dict alone.
+    write_pr_env_file()
 
 
 # Toolsets that must never be reachable from the `pr` profile: terminal and
@@ -966,6 +969,27 @@ def build_pr_env() -> dict[str, str]:
     env["API_SERVER_KEY"] = PR_API_SERVER_KEY
     env["API_SERVER_MODEL_NAME"] = "hermes-pr"
     return env
+
+
+def write_pr_env_file() -> None:
+    """Persist the same values build_pr_env() computes to $PR_HOME/.env on disk.
+
+    build_pr_env() alone only covers subprocesses THIS supervisor spawns
+    directly (its dict is passed via `env=` to asyncio.create_subprocess_exec).
+    Hermes' own dashboard "Start" button (or a manual `hermes -p pr gateway
+    start`) spawns its own process independently and resolves that profile's
+    env via Hermes' own dotenv loading of `$HERMES_HOME/profiles/pr/.env` —
+    without this file on disk, a dashboard-started `pr` gateway comes up with
+    API_SERVER_ENABLED unset (default false), so it looks "running" in the
+    dashboard but the platform's chat route can never reach it.
+    """
+    env = build_pr_env()
+    # HERMES_HOME is this process's own root — writing it into a nested
+    # profile's .env would be circular (and Hermes resolves the profile's
+    # home from the CLI's own HERMES_HOME + "-p pr" already).
+    lines = [f"{key}={value}" for key, value in sorted(env.items()) if key != "HERMES_HOME"]
+    PR_HOME.mkdir(parents=True, exist_ok=True)
+    (PR_HOME / ".env").write_text("\n".join(lines) + "\n")
 
 
 def write_env(path: Path, data: dict[str, str]) -> None:
@@ -1592,7 +1616,14 @@ class Gateway:
             asyncio.create_task(self._drain(self.proc))
         except Exception as e:
             self.state = "error"
-            self.logs.append(f"[error] Failed to start: {e}")
+            message = f"[{self.log_prefix}] [error] Failed to start: {e!r}"
+            self.logs.append(message)
+            # This branch covers everything before the subprocess spawns
+            # (env_builder()/config_writer() raising, or the exec itself
+            # failing) — none of that reaches _drain()'s stdout mirror, so
+            # without this print it's only visible via the cookie-authenticated
+            # /setup/api/logs endpoint, not Railway's raw log stream.
+            print(message, flush=True)
 
     async def stop(self):
         self._stopping = True
@@ -1619,6 +1650,11 @@ class Gateway:
         async for raw in proc.stdout:
             line = ANSI_ESCAPE.sub("", raw.decode(errors="replace").rstrip())
             self.logs.append(line)
+            # Same idiom as Dashboard._drain(): mirror to stdout (→ Railway
+            # logs) so a startup failure (e.g. an unrecognized `-p <profile>`
+            # invocation, a bad config.yaml) is visible without needing the
+            # cookie-authenticated /setup/api/logs endpoint.
+            print(f"[{self.log_prefix}] {line}", flush=True)
         rc = proc.returncode
         # Ignore the drain of a process we've already replaced (e.g. via restart()).
         if proc is not self.proc:
@@ -1703,11 +1739,20 @@ gw = Gateway()
 # — see the Hermes profiles docs). Started/stopped alongside gw in
 # auto_start()/lifespan() below; the tokenization platform's chat route talks
 # to it over its api_server port (PR_API_SERVER_URL), never through gw.
+def _write_pr_config() -> None:
+    write_pr_config_yaml(_current_pr_model_block())
+    # Same reasoning as the write_config_yaml() call site: a dashboard- or
+    # CLI-initiated start of this profile doesn't go through build_pr_env(),
+    # so the .env file on disk is what makes api_server actually come up
+    # regardless of who spawns the gateway.
+    write_pr_env_file()
+
+
 gw_pr = Gateway(
     profile=PR_PROFILE,
     cwd=PR_WORKDIR,
     env_builder=build_pr_env,
-    config_writer=lambda: write_pr_config_yaml(_current_pr_model_block()),
+    config_writer=_write_pr_config,
     pid_home=str(PR_HOME),
     log_prefix="pr-gateway",
 )
