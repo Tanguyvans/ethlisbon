@@ -31,6 +31,11 @@ from mcp.server.fastmcp import FastMCP
 BASE_URL = os.environ.get("TOKENIZATION_BASE_URL", "http://127.0.0.1:3000").rstrip("/")
 AGENT_SECRET = os.environ.get("TOKENIZATION_AGENT_SECRET", "")
 
+HEDERA_NETWORKS = {"mainnet", "testnet", "previewnet"}
+# Resolved once and cached (see _mirror_base_url) — the network never changes for a
+# running container, so there's no reason to re-fetch it per tool call.
+_MIRROR_BASE_URL: str | None = None
+
 WORLD_ID_NATIONALITIES = {
     "ARG", "AUS", "CHL", "COL", "CRI", "GBR", "HRV", "ITA",
     "JPN", "KOR", "MEX", "MYS", "PAN", "PRT", "SGP", "USA",
@@ -85,6 +90,72 @@ def _call(method: str, path: str, json: dict[str, Any] | None = None) -> dict[st
         raise TokenizationApiError(message or f"{method} {path} failed with HTTP {resp.status_code}")
 
     return body
+
+
+def _mirror_base_url() -> str:
+    """Return the Hedera Mirror Node base URL for the active network, cached.
+
+    The Mirror Node host is derived from the network exactly like the platform does
+    (apps/platform/src/lib/hedera/mirrorNode.ts): https://{network}.mirrornode.hedera.com.
+    Hermes does not inject HEDERA_NETWORK into this MCP's subprocess env today (see
+    write_config_yaml in apps/agent/server.py — only the tokenization URL/secret are
+    passed), so we resolve it ourselves: honor HEDERA_NETWORK if it's ever set, else
+    ask the tokenization app's unauthenticated /api/runtime-config (which reports the
+    same network the storefront runs on), else fall back to testnet.
+    """
+    global _MIRROR_BASE_URL
+    if _MIRROR_BASE_URL is not None:
+        return _MIRROR_BASE_URL
+
+    network = os.environ.get("HEDERA_NETWORK", "").strip().lower()
+    if network not in HEDERA_NETWORKS:
+        network = ""
+        try:
+            resp = httpx.get(f"{BASE_URL}/api/runtime-config", timeout=10.0)
+            if resp.is_success:
+                candidate = str((resp.json() or {}).get("network", "")).strip().lower()
+                if candidate in HEDERA_NETWORKS:
+                    network = candidate
+        except (httpx.HTTPError, ValueError):
+            network = ""
+    if not network:
+        network = "testnet"
+
+    _MIRROR_BASE_URL = f"https://{network}.mirrornode.hedera.com"
+    return _MIRROR_BASE_URL
+
+
+def _mirror_get(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    """GET a Hedera Mirror Node REST endpoint (read-only, no auth) and return JSON.
+
+    Unlike _call(), this targets the public Mirror Node — a different host and no
+    agent-secret header — but raises the same TokenizationApiError on failure so the
+    agent sees one consistent error style.
+    """
+    url = f"{_mirror_base_url()}{path}"
+    try:
+        resp = httpx.get(url, params=params, timeout=30.0)
+    except httpx.HTTPError as exc:
+        raise TokenizationApiError(
+            f"Could not reach the Hedera Mirror Node at {url}: {exc}."
+        ) from exc
+
+    try:
+        body = resp.json()
+    except ValueError:
+        body = {}
+
+    if resp.is_error:
+        detail = None
+        if isinstance(body, dict):
+            messages = (body.get("_status") or {}).get("messages") if isinstance(body.get("_status"), dict) else None
+            if isinstance(messages, list) and messages:
+                detail = messages[0].get("message") if isinstance(messages[0], dict) else None
+        raise TokenizationApiError(
+            detail or f"Hedera Mirror Node GET {path} failed with HTTP {resp.status_code}."
+        )
+
+    return body if isinstance(body, dict) else {}
 
 
 @mcp.tool()
@@ -367,6 +438,137 @@ def pause_token(token_id: str, paused: bool = True) -> dict[str, Any]:
     return _call("POST", f"/api/tokens/{token_id}/pause", json={"paused": paused})
 
 
+@mcp.tool()
+def get_onchain_token_info(token_id: str) -> dict[str, Any]:
+    """Read a token's LIVE on-chain state from the Hedera Mirror Node — the ground
+    truth from consensus, as opposed to this storefront's own bookkeeping record
+    (use get_token for the latter). Prefer this when someone asks about the real
+    current supply, treasury, or on-chain configuration of a token we launched.
+
+    Returns the Mirror Node token entity: total_supply and max_supply (in base
+    units, NOT decimal-adjusted), decimals, type (FUNGIBLE_COMMON / NON_FUNGIBLE_
+    UNIQUE), supply_type, treasury_account_id, pause_status, deleted, custom_fees,
+    and which keys are set (admin/kyc/freeze/wipe/supply/pause) — a set key is a
+    non-null object, a null key means that capability was not enabled at creation.
+
+    Args:
+        token_id: Hedera token id, e.g. "0.0.123456".
+    """
+    return _mirror_get(f"/api/v1/tokens/{token_id}")
+
+
+@mcp.tool()
+def get_top_holders(token_id: str, limit: int = 10) -> dict[str, Any]:
+    """List the accounts holding the largest current balances of a token, newest
+    consensus snapshot first-ranked by balance — i.e. the token's supply
+    distribution across the network, from the Hedera Mirror Node. The treasury
+    account is normally the #1 holder (it holds all undistributed supply).
+
+    Balances are in the token's base units (NOT decimal-adjusted); the response
+    includes each entry's decimals so you can convert to display units.
+
+    Args:
+        token_id: Hedera token id, e.g. "0.0.123456".
+        limit: Number of holders to return, 1-100 (default 10).
+    """
+    limit = max(1, min(limit, 100))
+    return _mirror_get(
+        f"/api/v1/tokens/{token_id}/balances",
+        params={"order": "desc", "limit": limit},
+    )
+
+
+@mcp.tool()
+def get_holder_balance(account_id: str, token_id: str) -> dict[str, Any]:
+    """Get one account's LIVE on-chain balance and HTS compliance flags for a
+    single token, from the Hedera Mirror Node. Complements the storefront's own
+    holder record (get_token lists registered holders) with consensus truth.
+
+    Returns the account's token relationship — balance (base units, NOT
+    decimal-adjusted), freeze_status, and kyc_status — or a clear "not associated"
+    result when the account has never associated this token (so its effective
+    balance is zero).
+
+    Args:
+        account_id: Holder's Hedera account id, e.g. "0.0.654321".
+        token_id: Hedera token id, e.g. "0.0.123456".
+    """
+    body = _mirror_get(
+        f"/api/v1/accounts/{account_id}/tokens",
+        params={"token.id": token_id, "limit": 1},
+    )
+    tokens = body.get("tokens") if isinstance(body, dict) else None
+    if isinstance(tokens, list) and tokens:
+        return {"accountId": account_id, "tokenId": token_id, "relationship": tokens[0]}
+    return {
+        "accountId": account_id,
+        "tokenId": token_id,
+        "relationship": None,
+        "note": "Account has not associated this token on the network; effective balance is 0.",
+    }
+
+
+@mcp.tool()
+def get_recent_token_transfers(token_id: str, limit: int = 20) -> dict[str, Any]:
+    """List the most recent on-chain transfers of a token we launched, newest
+    first, from the Hedera Mirror Node. Use this to answer "what recently happened
+    with this token" — distributions, reclaims, and mints all flow through the
+    treasury, and this surfaces exactly those movements.
+
+    The Mirror Node transactions endpoint can't filter by token, so this queries
+    the token's treasury account's CRYPTOTRANSFER transactions and keeps only the
+    transfer legs for this token. That covers every treasury-involved movement
+    (the vast majority for a storefront token); peer-to-peer transfers between two
+    non-treasury holders would not appear. Amounts are base units (positive =
+    credit to the account, negative = debit); a treasury debit with a holder
+    credit is a distribution, the reverse is a reclaim.
+
+    Args:
+        token_id: Hedera token id, e.g. "0.0.123456".
+        limit: Max number of matching transactions to return, 1-100 (default 20).
+    """
+    limit = max(1, min(limit, 100))
+    info = _mirror_get(f"/api/v1/tokens/{token_id}")
+    treasury = info.get("treasury_account_id")
+    if not treasury:
+        raise TokenizationApiError(
+            f"Could not determine the treasury account for token {token_id} from the Mirror Node."
+        )
+
+    # Over-fetch before filtering: not every treasury CRYPTOTRANSFER touches this
+    # exact token (the treasury/operator is party to many tokens' transfers).
+    body = _mirror_get(
+        "/api/v1/transactions",
+        params={
+            "account.id": treasury,
+            "transactiontype": "CRYPTOTRANSFER",
+            "order": "desc",
+            "limit": min(limit * 5, 100),
+        },
+    )
+    transactions = body.get("transactions") if isinstance(body, dict) else None
+    matches: list[dict[str, Any]] = []
+    for tx in transactions or []:
+        legs = [
+            {"account": t.get("account"), "amount": t.get("amount")}
+            for t in (tx.get("token_transfers") or [])
+            if t.get("token_id") == token_id
+        ]
+        if legs:
+            matches.append(
+                {
+                    "consensus_timestamp": tx.get("consensus_timestamp"),
+                    "transaction_id": tx.get("transaction_id"),
+                    "result": tx.get("result"),
+                    "transfers": legs,
+                }
+            )
+        if len(matches) >= limit:
+            break
+
+    return {"tokenId": token_id, "treasuryAccountId": treasury, "transfers": matches}
+
+
 def _selftest() -> None:
     """Bypass MCP transport and call a tool function directly — useful to
     smoke-test the HTTP wiring against a locally running tokenization app
@@ -377,6 +579,21 @@ def _selftest() -> None:
     print(f"Calling list_tokens() against {BASE_URL} ...")
     result = list_tokens()
     print(json.dumps(result, indent=2))
+
+    # Exercise the Mirror Node wiring too: resolve the network, then read live
+    # on-chain info for the first deployed token if there is one.
+    print(f"\nResolved Mirror Node base URL: {_mirror_base_url()}")
+    tokens = result.get("tokens") if isinstance(result, dict) else None
+    if tokens:
+        token_id = tokens[0].get("id")
+        print(f"\nCalling get_onchain_token_info({token_id!r}) ...")
+        print(json.dumps(get_onchain_token_info(token_id), indent=2))
+        print(f"\nCalling get_top_holders({token_id!r}) ...")
+        print(json.dumps(get_top_holders(token_id), indent=2))
+        print(f"\nCalling get_recent_token_transfers({token_id!r}) ...")
+        print(json.dumps(get_recent_token_transfers(token_id), indent=2))
+    else:
+        print("\nNo deployed tokens found — skipping Mirror Node tool smoke test.")
 
 
 if __name__ == "__main__":
